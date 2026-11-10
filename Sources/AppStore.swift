@@ -80,6 +80,10 @@ final class AppStore: ObservableObject {
     }
 
     func saveSettings() {
+        // 列名固定用默认值（界面上不给改）
+        settings.fieldCode = "编号"
+        settings.fieldQty = "库存"
+        settings.fieldPrice = "单价/码"
         if let data = try? JSONEncoder().encode(settings) {
             UserDefaults.standard.set(data, forKey: settingsKey)
         }
