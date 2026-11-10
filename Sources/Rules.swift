@@ -22,6 +22,7 @@ enum Rules {
 
         let msg = normalize(text)
         guard !msg.isEmpty else { return (nil, turn) }
+        let wantMeters = wantsMeters(msg)
 
         // 0. 追问：还有别的吗 / 继续
         if let t = turn, t.kind == "price", isFollowUp(msg) {
@@ -70,7 +71,7 @@ enum Rules {
 
         // 5. 够不够（2002 有没有300）
         if let need = thresholdNumber(msg), let p = findAny(msg, in: products) {
-            return (thresholdAnswer(p, need: need), nil)
+            return (thresholdAnswer(p, need: need) + metersSuffix(p, want: wantMeters), nil)
         }
 
         let codes = extractCodes(msg)
@@ -125,7 +126,7 @@ enum Rules {
         if msg.contains("价格") || msg.contains("多少钱") || msg.contains("价") {
             return ("\(p.sku) \(priceText(p))", nil)
         }
-        return (stockText(p), nil)
+        return (stockText(p) + metersSuffix(p, want: wantMeters), nil)
     }
 
     // MARK: - 分页（价格区间）
@@ -240,6 +241,25 @@ enum Rules {
         }
         if q <= 0 { return "目前没货" }
         return "还有 " + amount(p, total: q) + " 码"
+    }
+
+    /// 用户是在问「米」吗（同时说了码就按码）
+    static func wantsMeters(_ msg: String) -> Bool {
+        msg.contains("米") && !msg.contains("码")
+    }
+
+    /// 码 → 米的补充说明
+    static func metersSuffix(_ p: Product, want: Bool) -> String {
+        guard want, let q = p.qty, q > 0 else { return "" }
+        return "\n" + metersText(q)
+    }
+
+    static func metersText(_ yards: Double) -> String {
+        let meters = yards * 0.9144
+        let text = abs(meters - meters.rounded()) < 0.5
+            ? String(format: "%.0f", meters)
+            : String(format: "%.1f", meters)
+        return "（\(Int(yards)) 码 ≈ \(text) 米，1 码 = 0.9144 米）"
     }
 
     /// 有算式就带明细：96+103+95+117+166 = 577
