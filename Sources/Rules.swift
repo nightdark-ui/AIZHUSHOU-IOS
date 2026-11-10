@@ -335,7 +335,7 @@ enum Rules {
         let pattern = "(\\d{1,3})\\s*(?:个|款|条)"
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
         let ns = msg as NSString
-        guard let m = regex.firstMatch(in: msg, range: NSRange(location: 0, length: ns.count)),
+        guard let m = regex.firstMatch(in: msg, range: NSRange(location: 0, length: ns.length)),
               m.numberOfRanges > 1,
               let n = Int(ns.substring(with: m.range(at: 1))), n > 0 else { return nil }
         return min(n, 100)
