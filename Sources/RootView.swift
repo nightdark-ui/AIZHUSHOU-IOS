@@ -43,7 +43,21 @@ struct RootView: View {
             }
         }
         .task {
-            try? await Task.sleep(nanoseconds: 1_400_000_000)
+            let begin = Date()
+            let hadData = !store.products.isEmpty
+
+            // 至少显示 0.9 秒，避免一闪而过
+            while Date().timeIntervalSince(begin) < 0.9 {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+
+            // 没有本地数据时才等首次同步，最多再等 3.5 秒
+            if !hadData {
+                while store.syncing && Date().timeIntervalSince(begin) < 4.4 {
+                    try? await Task.sleep(nanoseconds: 150_000_000)
+                }
+            }
+
             withAnimation(.easeOut(duration: 0.35)) { showSplash = false }
         }
         .task {
