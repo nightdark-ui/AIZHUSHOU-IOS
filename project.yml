@@ -24,6 +24,7 @@ targets:
           - UIInterfaceOrientationPortrait
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
+        NSPhotoLibraryAddUsageDescription: 需要保存款式图片到相册
         NSMicrophoneUsageDescription: 需要麦克风来语音提问
         NSSpeechRecognitionUsageDescription: 需要语音识别把你说的话变成文字
         NSAppTransportSecurity:

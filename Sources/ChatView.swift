@@ -7,6 +7,7 @@ struct ChatView: View {
     @State private var input = ""
     @State private var showModelInfo = false
     @State private var preview: String?
+    @State private var saveHint = ""
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -67,6 +68,18 @@ struct ChatView: View {
                 set: { if $0 == nil { preview = nil } }
             )) { item in
                 fullImage(item.path)
+                    .overlay(alignment: .bottom) {
+                        if !saveHint.isEmpty {
+                            Text(saveHint)
+                                .font(.footnote)
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 8)
+                                .background(Color.black.opacity(0.75))
+                                .clipShape(Capsule())
+                                .padding(.bottom, 30)
+                        }
+                    }
             }
             .alert("模型状态", isPresented: $showModelInfo) {
                 Button("测试连接") { Task { await store.testModel() } }
@@ -227,21 +240,76 @@ struct ChatView: View {
     private func fullImage(_ path: String) -> some View {
         VStack(spacing: 0) {
             HStack {
+                Button {
+                    preview = nil
+                } label: {
+                    Text("关闭")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(Theme.brand)
+                }
+
                 Spacer()
-                Button("关闭") { preview = nil }
-                    .padding()
+
+                if let image = UIImage(contentsOfFile: path) {
+                    ShareLink(item: Image(uiImage: image),
+                              preview: SharePreview("款式图片", image: Image(uiImage: image))) {
+                        Label("转发", systemImage: "square.and.arrow.up")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(Theme.brand)
+                    }
+                }
+
+                Button {
+                    saveToAlbum(path)
+                } label: {
+                    Label("保存", systemImage: "square.and.arrow.down")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(Theme.brand)
+                }
+                .padding(.leading, 14)
             }
-            if let img = UIImage(contentsOfFile: path) {
-                Image(uiImage: img)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding(.horizontal, 6)
-            } else {
-                Text("图片打不开").foregroundStyle(.white)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(Theme.panel)
+
+            Divider().overlay(Theme.line)
+
+            ScrollView([.horizontal, .vertical]) {
+                if let img = UIImage(contentsOfFile: path) {
+                    Image(uiImage: img)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: .infinity)
+                        .padding(12)
+                        .contextMenu {
+                            Button {
+                                saveToAlbum(path)
+                            } label: {
+                                Label("保存到相册", systemImage: "photo")
+                            }
+                        }
+                } else {
+                    Text("图片打不开")
+                        .foregroundStyle(Theme.muted)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             }
+            .background(Theme.bg)
         }
-        .background(Color.black)
+        .background(Theme.bg)
+        .onAppear { saveHint = "" }
+    }
+
+    private func saveToAlbum(_ path: String) {
+        guard let img = UIImage(contentsOfFile: path) else {
+            saveHint = "图片读不出来"
+            return
+        }
+        UIImageWriteToSavedPhotosAlbum(img, nil, nil, nil)
+        saveHint = "已保存到相册"
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            if saveHint == "已保存到相册" { saveHint = "" }
+        }
     }
 
     private var avatar: some View {
