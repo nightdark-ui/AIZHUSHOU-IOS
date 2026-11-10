@@ -70,6 +70,7 @@ struct ChatLine: Identifiable, Equatable {
     var mode: String = ""      // rule / llm
     var images: [String] = []  // 本地图片绝对路径
     var options: [String] = [] // 让用户点选的候选编号
+    var optionIntent: String = ""  // price / stock
 }
 
 /// App 设置，存在 UserDefaults 里

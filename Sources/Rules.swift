@@ -7,6 +7,7 @@ struct RuleTurn {
     var high: Double = 0
     var shown: Int = 0
     var options: [String] = []
+    var intent = ""   // 选项对应的意图：price / stock
 }
 
 /// 本地规则引擎：编号直达、区间、筛选、补货，毫秒级
@@ -169,6 +170,7 @@ enum Rules {
         if variants.count > 1 && !asksSpecific {
             var turn = RuleTurn(kind: "choose")
             turn.options = variants.prefix(8).map { $0.sku }
+            turn.intent = msg.contains("价格") || msg.contains("多少钱") ? "price" : "stock"
             return ("「\(code)」有 \(variants.count) 种写法，点下面选一个：", turn)
         }
 

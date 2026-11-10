@@ -28,6 +28,7 @@ final class AppStore: ObservableObject {
 
     private var lastTurn: RuleTurn?
     private var lastSku: String?
+    private var lastIntent = ""
     private var lastCodes: [String] = []
     private let settingsKey = "aizhushou.settings.v1"
     private let lastSyncKey = "aizhushou.lastsync"
@@ -354,6 +355,17 @@ final class AppStore: ObservableObject {
         !settings.deepSeekKey.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
+    /// 点候选编号：带上原来问的意图
+    func chooseOption(_ sku: String, intent: String) {
+        let tail: String
+        switch intent {
+        case "price": tail = "价格"
+        case "stock": tail = "库存"
+        default: tail = lastIntent == "price" ? "价格" : "库存"
+        }
+        Task { await ask(sku + " " + tail) }
+    }
+
     // MARK: - 备份 / 恢复
 
     /// 导出备份，返回文件路径（成功后可以分享出去）
@@ -536,15 +548,30 @@ final class AppStore: ObservableObject {
         var effective = question
         let intentWords = ["价格", "多少钱", "库存", "还有多少", "剩多少", "有货",
                            "图片", "照片", "长什么样", "米"]
+
+        // 没有编号、只说「价格呢」「库存呢」→ 沿用上一条编号
         if Rules.extractCodes(effective).isEmpty, let last = lastSku,
            intentWords.contains(where: { effective.contains($0) }) {
             effective = effective + " " + last
+        }
+
+        // 有编号、但没说问什么（如「2053呢」）→ 沿用上一轮意图
+        if !lastIntent.isEmpty,
+           !intentWords.contains(where: { effective.contains($0) }),
+           !Rules.extractCodes(effective).isEmpty {
+            effective = effective + " " + (lastIntent == "price" ? "价格" : "库存")
         }
 
         // 先走规则
         let result = Rules.answer(effective, products: products,
                                   restock: restock, threshold: settings.threshold,
                                   turn: lastTurn)
+        if effective.contains("价格") || effective.contains("多少钱") {
+            lastIntent = "price"
+        } else if effective.contains("库存") || effective.contains("码") || effective.contains("米") {
+            lastIntent = "stock"
+        }
+
         let usedCodes = Rules.extractCodes(effective)
         if let code = usedCodes.first,
            let hit = Rules.find(code, in: products) {
@@ -559,6 +586,7 @@ final class AppStore: ObservableObject {
             line.images = imagesFor(question: effective, answer: answer)
             if let turn = result.turn, turn.kind == "choose" {
                 line.options = turn.options
+                line.optionIntent = turn.intent
             }
             let wantsImage = effective.contains("图片") || effective.contains("照片")
             if wantsImage && line.images.isEmpty && line.options.isEmpty {

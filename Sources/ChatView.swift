@@ -237,8 +237,8 @@ struct ChatView: View {
                     HStack(spacing: 8) {
                         ForEach(line.options, id: \.self) { sku in
                             Button {
-                                // 带上"库存"意图，避免又被反问一次
-                                Task { await store.ask(sku + " 库存") }
+                                // 带上这条回复记录的意图（问价格就还问价格）
+                                store.chooseOption(sku, intent: line.optionIntent)
                             } label: {
                                 Text(sku).pill()
                             }
