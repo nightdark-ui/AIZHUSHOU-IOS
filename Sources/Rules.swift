@@ -33,6 +33,11 @@ enum Rules {
             return (chat, nil)
         }
 
+        // 1b. 离题（天气、新闻、写代码…）
+        if let off = offtopic(msg) {
+            return (off, nil)
+        }
+
         // 2. 价格区间（价格10到20的款）
         if let range = priceRange(msg) {
             let t = RuleTurn(kind: "price", low: range.0, high: range.1, shown: 0)
@@ -91,6 +96,11 @@ enum Rules {
         // 7. 单个编号
         let code = codes[0]
 
+        // 7a0. 编号 + 说明：9005 32梭 → 9005(32梭）
+        if let exact = resolveWithSuffix(code: code, message: msg, products: products) {
+            return (stockText(exact), nil)
+        }
+
         // 7a. 有多种写法：2002 / 2002-1
         let variants = variantList(code, in: products)
         if variants.count > 1 {
@@ -101,7 +111,16 @@ enum Rules {
             return (lines.joined(separator: "\n"), nil)
         }
 
-        guard let p = find(code, in: products) else { return (nil, nil) }
+        guard let p = find(code, in: products) else {
+            let near = suggest(code, in: products)
+            if !near.isEmpty {
+                var lines = ["没找到「\(code)」。是不是这些："]
+                for n in near { lines.append("· \(n.sku)  \(stockText(n))") }
+                lines.append("（直接发编号就行）")
+                return (lines.joined(separator: "\n"), nil)
+            }
+            return (nil, nil)
+        }
 
         if msg.contains("价格") || msg.contains("多少钱") || msg.contains("价") {
             return ("\(p.sku) \(priceText(p))", nil)
@@ -264,6 +283,95 @@ enum Rules {
         if q <= 0 { return "\(p.sku) 没货，不够 \(n) 码。" }
         if q >= need { return "\(p.sku) 还有 \(detail) 码，够 \(n)。" }
         return "\(p.sku) 只剩 \(detail) 码，不够 \(n)（差 \(Int(need - q)) 码）。"
+    }
+
+    // MARK: - 离题 / 相似编号 / 说明匹配
+
+    static func offtopic(_ msg: String) -> String? {
+        let keys = ["天气", "新闻", "股票", "汇率", "比特币", "笑话", "唱歌", "讲故事",
+                    "写代码", "编程", "翻译", "作文", "电影", "歌曲", "游戏", "几点了"]
+        guard keys.contains(where: { msg.contains($0) }) else { return nil }
+        // 句子里有编号/库存/价格/补货字样就不算离题
+        let business = ["库存", "价格", "多少钱", "补货", "码", "款号"]
+        if business.contains(where: { msg.contains($0) }) { return nil }
+        return "这个我帮不上忙，我只会查库存、查价格、看补货。"
+    }
+
+    /// 编号 + 说明：9005 32梭 → 9005(32梭）
+    static func resolveWithSuffix(code: String, message: String, products: [Product]) -> Product? {
+        let variants = variantList(code, in: products)
+        guard variants.count > 1 else { return nil }
+
+        let rest = message.replacingOccurrences(of: code, with: "")
+        let normalized = rest.replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "（", with: "(")
+            .replacingOccurrences(of: "）", with: ")")
+        guard !normalized.isEmpty else { return nil }
+
+        var hits: [Product] = []
+        for v in variants {
+            let suffix = v.sku.uppercased()
+                .replacingOccurrences(of: code.uppercased(), with: "")
+                .replacingOccurrences(of: "(", with: "")
+                .replacingOccurrences(of: "）", with: "")
+                .replacingOccurrences(of: ")", with: "")
+                .replacingOccurrences(of: "-", with: "")
+                .replacingOccurrences(of: "_", with: "")
+            guard !suffix.isEmpty else { continue }
+            if normalized.contains(suffix) { hits.append(v) }
+        }
+        return hits.count == 1 ? hits[0] : nil
+    }
+
+    /// 打错字/编号不存在时，给最像的几个
+    static func suggest(_ code: String, in products: [Product], limit: Int = 5) -> [Product] {
+        let target = code.uppercased()
+        guard target.count >= 3 else { return [] }
+
+        var scored: [(Product, Int)] = []
+        for p in products {
+            let s = p.sku.uppercased()
+            var common = 0
+            for (a, b) in zip(target, s) {
+                if a == b { common += 1 } else { break }
+            }
+            let tDigits = target.filter { $0.isNumber }
+            let sDigits = s.filter { $0.isNumber }
+            var dCommon = 0
+            for (a, b) in zip(tDigits, sDigits) {
+                if a == b { dCommon += 1 } else { break }
+            }
+            let score = max(common, dCommon)
+            if score >= 3 { scored.append((p, score)) }
+        }
+        return scored.sorted { $0.1 > $1.1 }.prefix(limit).map { $0.0 }
+    }
+
+    /// AI 回答里的每个数字都必须在证据里，否则算编造
+    static func numbersOK(answer: String, evidence: String, extra: String) -> Bool {
+        let tokens = numbers(in: answer)
+        if tokens.isEmpty { return true }
+        guard !evidence.isEmpty else { return false }
+
+        var known = Set(numbers(in: evidence))
+        known.formUnion(numbers(in: extra))
+
+        for t in tokens {
+            if known.contains(t) { continue }
+            // 允许 577 vs 577.0 这种
+            if let v = Double(t), known.contains(where: { Double($0).map { abs($0 - v) < 0.001 } ?? false }) {
+                continue
+            }
+            return false
+        }
+        return true
+    }
+
+    static func numbers(in text: String) -> [String] {
+        guard let regex = try? NSRegularExpression(pattern: "\\d+(?:\\.\\d+)?") else { return [] }
+        let ns = text as NSString
+        return regex.matches(in: text, range: NSRange(location: 0, length: ns.length))
+            .map { ns.substring(with: $0.range) }
     }
 
     // MARK: - 闲聊

@@ -3,16 +3,21 @@ import Foundation
 /// DeepSeek 对话（只用于规则答不了的复杂问题）
 struct DeepSeekClient {
 
-    static let endpoint = "https://api.deepseek.com/v1/chat/completions"
+    static let defaultBase = "https://api.deepseek.com/v1"
 
     static func ask(question: String,
                     key: String,
                     context: String,
-                    history: [ChatLine]) async throws -> String {
+                    history: [ChatLine],
+                    base: String = defaultBase,
+                    model: String = "deepseek-chat") async throws -> String {
         guard !key.trimmingCharacters(in: .whitespaces).isEmpty else {
             throw WPSError.badPayload("还没填 DeepSeek API Key")
         }
-        guard let url = URL(string: endpoint) else {
+        var root = base.trimmingCharacters(in: .whitespaces)
+        if root.isEmpty { root = defaultBase }
+        if root.hasSuffix("/") { root.removeLast() }
+        guard let url = URL(string: root + "/chat/completions") else {
             throw WPSError.badPayload("接口地址不对")
         }
 
@@ -39,7 +44,7 @@ struct DeepSeekClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
         request.httpBody = try JSONSerialization.data(withJSONObject: [
-            "model": "deepseek-chat",
+            "model": model,
             "messages": messages,
             "temperature": 0.2,
             "stream": false

@@ -119,8 +119,8 @@ final class AppStore: ObservableObject {
                            "gap": "1", "dropEmpty": "0", "money": "1"]
                 )
                 for row in priceRows {
-                    guard let code = pick(row, ["编号", "sku", "code"]) else { continue }
-                    let text = pick(row, ["单价/码", "单价", "价格"])
+                    guard let code = pick(row, [settings.fieldCode, "编号", "sku", "code"]) else { continue }
+                    let text = pick(row, [settings.fieldPrice, "单价/码", "单价", "价格"])
                     priceMap[code.uppercased()] = (text, parseNumber(text))
                 }
             } else {
@@ -133,12 +133,12 @@ final class AppStore: ObservableObject {
             var result: [Product] = []
             var seen = Set<String>()
             for row in stockRows {
-                guard let code = pick(row, ["编号", "sku", "code"]) else { continue }
+                guard let code = pick(row, [settings.fieldCode, "编号", "sku", "code"]) else { continue }
                 let key = code.uppercased()
                 if seen.contains(key) { continue }
                 seen.insert(key)
 
-                let qtyText = pick(row, ["库存", "数量", "qty"])
+                let qtyText = pick(row, [settings.fieldQty, "库存", "数量", "qty"])
                 let qty = normalizeQty(qtyText)
                 let p = priceMap[key]
                 result.append(Product(sku: code, name: nil,
@@ -374,10 +374,19 @@ final class AppStore: ObservableObject {
             let reply = try await DeepSeekClient.ask(question: question,
                                                      key: settings.deepSeekKey,
                                                      context: context,
-                                                     history: chat)
-            var line = ChatLine(role: "assistant", text: greet(reply), mode: "llm")
-            line.images = imagesFor(question: question, answer: reply)
-            chat.append(line)
+                                                     history: chat,
+                                                     base: settings.apiBase,
+                                                     model: settings.apiModel)
+            // 数字校验：AI 不能编数据
+            if Rules.numbersOK(answer: reply, evidence: context, extra: question) {
+                var line = ChatLine(role: "assistant", text: greet(reply), mode: "llm")
+                line.images = imagesFor(question: question, answer: reply)
+                chat.append(line)
+            } else {
+                chat.append(ChatLine(role: "assistant",
+                                     text: "主人，AI 报的数字跟表格对不上，我就不照着说了。\n你问具体编号的库存或价格，我直接查给你。",
+                                     mode: "rule"))
+            }
         } catch {
             chat.append(ChatLine(role: "assistant",
                                  text: "主人，这个问题需要联网的 AI，但现在用不了：\(error.localizedDescription)",

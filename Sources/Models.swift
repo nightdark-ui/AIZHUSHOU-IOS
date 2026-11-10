@@ -87,4 +87,13 @@ struct AppSettings: Codable {
     // 和电脑版双向同步
     var pcBaseURL: String = ""
     var syncKey: String = ""
+
+    // 模型地址可改
+    var apiBase: String = "https://api.deepseek.com/v1"
+    var apiModel: String = "deepseek-chat"
+
+    // 表头别名（字段映射）
+    var fieldCode: String = "编号"
+    var fieldQty: String = "库存"
+    var fieldPrice: String = "单价/码"
 }

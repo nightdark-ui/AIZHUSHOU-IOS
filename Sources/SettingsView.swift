@@ -19,6 +19,8 @@ struct SettingsView: View {
                     SecureField("AirScript 令牌", text: $draft.inventoryToken)
                     TextField("文件 ID", text: $draft.inventoryFileId)
                     TextField("脚本 ID", text: $draft.inventoryScriptId)
+                    TextField("编号列名", text: $draft.fieldCode)
+                    TextField("库存列名", text: $draft.fieldQty)
                 } label: {
                     label("库存表", detail: draft.inventoryToken.isEmpty ? "未填令牌" : "已填")
                 }
@@ -28,6 +30,7 @@ struct SettingsView: View {
                     SecureField("AirScript 令牌", text: $draft.priceToken)
                     TextField("文件 ID", text: $draft.priceFileId)
                     TextField("脚本 ID", text: $draft.priceScriptId)
+                    TextField("价格列名", text: $draft.fieldPrice)
                     Text("价格表只在打开 App 和「保存并同步」时拉取。")
                         .font(.caption2)
                         .foregroundStyle(Theme.muted)
@@ -58,6 +61,13 @@ struct SettingsView: View {
                 // AI
                 DisclosureGroup(isExpanded: $openAI) {
                     SecureField("DeepSeek API Key", text: $draft.deepSeekKey)
+                    TextField("接口地址", text: $draft.apiBase)
+                        .keyboardType(.URL)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                    TextField("模型名称", text: $draft.apiModel)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
                     Button {
                         store.settings = draft
                         Task { await store.testModel() }

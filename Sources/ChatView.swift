@@ -190,19 +190,16 @@ struct ChatView: View {
                         .padding(.leading, 3)
                 }
                 if !line.images.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 6) {
-                            ForEach(line.images, id: \.self) { path in
-                                Button {
-                                    preview = path
-                                } label: {
-                                    thumb(path)
-                                }
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(line.images, id: \.self) { path in
+                            Button {
+                                preview = path
+                            } label: {
+                                thumb(path)
                             }
                         }
-                        .padding(.vertical, 2)
                     }
-                    .frame(maxWidth: 260, alignment: .leading)
+                    .padding(.top, 2)
                 }
             }
 
@@ -221,7 +218,7 @@ struct ChatView: View {
                     .overlay(Image(systemName: "photo").foregroundStyle(Theme.muted))
             }
         }
-        .frame(width: 78, height: 78)
+        .frame(width: 150, height: 150)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
             .stroke(Theme.line, lineWidth: 1))
