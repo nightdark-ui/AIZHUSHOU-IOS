@@ -47,10 +47,27 @@ struct SettingsView: View {
                     SecureField("同步密钥", text: $draft.syncKey)
                     Button {
                         store.settings = draft
-                        Task { await store.syncAcks() }
+                        store.saveSettings()
+                        Task { _ = await store.syncAcks() }
                     } label: {
-                        Text("立即同步确认记录")
+                        HStack {
+                            Text("立即同步确认记录")
+                            if store.syncingAcks {
+                                Spacer()
+                                ProgressView().scaleEffect(0.8)
+                            }
+                        }
                     }
+                    .disabled(store.syncingAcks)
+
+                    if !store.lastAcksMessage.isEmpty {
+                        Text(store.lastAcksMessage)
+                            .font(.caption)
+                            .foregroundStyle(store.lastAcksMessage.hasPrefix("同步成功")
+                                             ? Theme.ok : Theme.danger)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
                     Text("电脑关机时不影响手机使用，下次连上会自动补上。")
                         .font(.caption2)
                         .foregroundStyle(Theme.muted)

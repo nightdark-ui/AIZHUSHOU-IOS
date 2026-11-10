@@ -15,6 +15,8 @@ final class AppStore: ObservableObject {
     @Published var history: [HistoryItem] = []
     @Published var historyLoading = false
     @Published var modelStatus = ""
+    @Published var syncingAcks = false
+    @Published var lastAcksMessage = ""
     let library = ImageLibrary()
     private var libraryCancellable: AnyCancellable?
     @Published var lastSync: Date?
@@ -277,10 +279,18 @@ final class AppStore: ObservableObject {
     // MARK: - 和电脑双向同步
 
     /// 推自己的确认记录 + 拉电脑的，最后合并
-    func syncAcks() async {
+    @discardableResult
+    func syncAcks() async -> String {
         let base = settings.pcBaseURL.trimmingCharacters(in: .whitespaces)
         let key = settings.syncKey.trimmingCharacters(in: .whitespaces)
-        guard !base.isEmpty, !key.isEmpty else { return }
+        guard !base.isEmpty, !key.isEmpty else {
+            let msg = "还没填电脑地址或同步密钥"
+            lastAcksMessage = msg
+            return msg
+        }
+
+        syncingAcks = true
+        defer { syncingAcks = false }
 
         // 本地确认记录 → 发给电脑
         let today = self.today
@@ -334,14 +344,16 @@ final class AppStore: ObservableObject {
                                           threshold: settings.threshold,
                                           acks: Storage.loadAcks())
             Notifier.scheduleRestock(count: restock.count)
-            if added > 0 || changed > 0 {
-                statusText += "（已和电脑同步 +少\(added)条/+改\(changed)条）"
-            }
+            let msg = "同步成功：电脑共 \(result.acks.count) 条确认，"
+                + "新增 \(added) 条，提醒线改了 \(changed) 个"
+            lastAcksMessage = msg
+            statusText = msg
+            return msg
         } catch {
-            // 电脑没开/连不上不影响手机使用
-            if !products.isEmpty {
-                statusText += "（电脑未连接）"
-            }
+            let msg = "同步失败：\(error.localizedDescription)"
+            lastAcksMessage = msg
+            statusText = msg
+            return msg
         }
     }
 
