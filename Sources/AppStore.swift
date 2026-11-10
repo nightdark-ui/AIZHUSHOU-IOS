@@ -105,7 +105,9 @@ final class AppStore: ObservableObject {
                 token: settings.inventoryToken,
                 fileId: settings.inventoryFileId,
                 scriptId: settings.inventoryScriptId,
-                argv: ["mode": "codes", "field": "库存", "sum": "0",
+                argv: ["mode": "codes",
+                       "field": settings.fieldQty.isEmpty ? "库存" : settings.fieldQty,
+                       "sum": "0",
                        "gap": "4", "dropEmpty": "1", "money": "0"]
             )
 
@@ -117,7 +119,9 @@ final class AppStore: ObservableObject {
                     token: settings.priceToken.isEmpty ? settings.inventoryToken : settings.priceToken,
                     fileId: settings.priceFileId,
                     scriptId: settings.priceScriptId,
-                    argv: ["mode": "codes", "field": "单价/码", "sum": "0",
+                    argv: ["mode": "codes",
+                           "field": settings.fieldPrice.isEmpty ? "单价/码" : settings.fieldPrice,
+                           "sum": "0",
                            "gap": "1", "dropEmpty": "0", "money": "1"]
                 )
                 for row in priceRows {
