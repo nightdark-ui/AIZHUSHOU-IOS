@@ -224,10 +224,17 @@ final class AppStore: ObservableObject {
         Task { await sync(prices: needPrice) }
     }
 
-    /// 切回前台：只更新库存
+    /// 切回前台：只更新库存（5 分钟内不重复）
     func autoSyncIfNeeded() {
         guard !syncing, !settings.inventoryToken.isEmpty else { return }
-        if let last = lastSync, Date().timeIntervalSince(last) < 600 { return }
+        if let last = lastSync, Date().timeIntervalSince(last) < 300 { return }
+        Task { await sync(prices: false) }
+    }
+
+    /// App 一直开着时，每 5 分钟自动拉一次库存
+    func periodicSyncIfNeeded() {
+        guard !syncing, !settings.inventoryToken.isEmpty else { return }
+        if let last = lastSync, Date().timeIntervalSince(last) < 300 { return }
         Task { await sync(prices: false) }
     }
 

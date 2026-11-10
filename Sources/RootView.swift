@@ -33,12 +33,14 @@ struct RootView: View {
             }
         }
         .task {
-            // 前台时每 60 秒把没送出去的确认补推一次
+            // 前台每 60 秒检查一次：补推确认 + 库存超过 5 分钟就自动拉
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 60_000_000_000)
-                if scenePhase == .active && store.pendingAcks > 0 {
+                guard scenePhase == .active else { continue }
+                if store.pendingAcks > 0 {
                     _ = await store.syncAcks()
                 }
+                store.periodicSyncIfNeeded()
             }
         }
     }
