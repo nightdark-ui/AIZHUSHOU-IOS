@@ -641,22 +641,40 @@ enum Rules {
     // MARK: - 数量筛选
 
     static func qtyListReply(_ msg: String, products: [Product]) -> String? {
-        guard msg.contains("超过") || msg.contains("大于") || msg.contains("多于")
-                || msg.contains("以上") || msg.contains("不少于") else { return nil }
+        // 有具体编号的，交给"够不够"处理，不算筛选
+        if let c = extractCodes(msg).first, resolve(c, in: products) != nil { return nil }
 
-        let pattern = "(?:超过|大于|多于|不少于|至少)?\\s*(\\d{1,6})\\s*(米|m|M|码|打|包)?\\s*(?:以上|起|往上)?"
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
-        let ns = msg as NSString
-        guard let m = regex.firstMatch(in: msg, range: NSRange(location: 0, length: ns.length)),
-              m.numberOfRanges > 1,
-              let raw = Double(ns.substring(with: m.range(at: 1))), raw > 0 else { return nil }
-
-        var unit = ""
-        if m.numberOfRanges > 2, m.range(at: 2).location != NSNotFound {
-            unit = ns.substring(with: m.range(at: 2)).lowercased()
-        }
-        let yards = (unit == "米" || unit == "m") ? raw * 1.09361 : raw
         let prefix = prefixFilter(msg)
+        let wantsList = msg.contains("哪些") || msg.contains("那些") || msg.contains("有没")
+            || msg.contains("哪些款") || msg.contains("的款") || msg.contains("的花")
+            || msg.contains("的有") || msg.contains("有的")
+
+        // 阈值：超过/大于/以上/不少于/有/库存/达到 + 数字
+        var threshold: Double? = nil
+        var unit = ""
+
+        let patterns = [
+            "(?:超过|大于|多于|不少于|至少|达到|有|库存|数量)\\s*(\\d{1,6})\\s*(米|m|M|码|打|包)?",
+            "(\\d{1,6})\\s*(米|m|M|码|打|包)?\\s*(?:以上|起|往上|的有|的款)"
+        ]
+        for pat in patterns where threshold == nil {
+            guard let regex = try? NSRegularExpression(pattern: pat) else { continue }
+            let ns = msg as NSString
+            if let m = regex.firstMatch(in: msg, range: NSRange(location: 0, length: ns.length)),
+               m.numberOfRanges > 1,
+               let v = Double(ns.substring(with: m.range(at: 1))), v >= 1 {
+                threshold = v
+                if m.numberOfRanges > 2, m.range(at: 2).location != NSNotFound {
+                    unit = ns.substring(with: m.range(at: 2)).lowercased()
+                }
+            }
+        }
+
+        guard let raw = threshold else { return nil }
+        guard wantsList || prefix != nil || msg.contains("超过") || msg.contains("以上") else { return nil }
+
+        // 米 → 码
+        let yards = (unit == "米" || unit == "m") ? raw * 1.09361 : raw
 
         let pool = products.filter { p in
             guard let q = p.qty else { return false }
@@ -670,11 +688,11 @@ enum Rules {
             : "\(intText(raw)) 码"
         let prefixText = prefix.map { "\($0) 开头的" } ?? ""
 
-        guard !pool.isEmpty else { return "没有\(prefixText)超过 \(unitText) 的款。" }
+        guard !pool.isEmpty else { return "没有\(prefixText)库存 \(unitText) 以上的款。" }
 
-        var lines = ["\(prefixText)超过 \(unitText) 的共 \(pool.count) 款，先列 \(min(pool.count, 30)) 个："]
+        var lines = ["\(prefixText)库存 \(unitText) 以上的共 \(pool.count) 款，先列 \(min(pool.count, 30)) 个："]
         for p in pool.prefix(30) { lines.append("\(p.sku)  \(Int(p.qty ?? 0)) 码") }
-        if pool.count > 30 { lines.append("……还有 \(pool.count - 30) 款（条件收窄一点，比如「超过500米」）") }
+        if pool.count > 30 { lines.append("……还有 \(pool.count - 30) 款（条件收窄一点再看）") }
         return lines.joined(separator: "\n")
     }
 
