@@ -215,7 +215,7 @@ enum Rules {
         if asksPrice {
             return ("\(p.sku)  价格 \(price)", nil)
         }
-        return (stockText(p) + metersSuffix(p, want: wantMeters), nil)
+        return (p.sku + " " + stockText(p) + metersSuffix(p, want: wantMeters), nil)
     }
 
     /// 「比2002贵的花」「比2002便宜的」
