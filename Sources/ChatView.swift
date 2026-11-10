@@ -57,9 +57,20 @@ struct ChatView: View {
                     modelPill
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Text(store.syncing ? "同步中…" : store.lastSyncText)
-                        .font(.caption2)
-                        .foregroundStyle(Theme.muted)
+                    HStack(spacing: 4) {
+                        Image(systemName: store.syncing
+                              ? "arrow.triangle.2.circlepath"
+                              : "clock")
+                            .font(.system(size: 9, weight: .medium))
+                        Text(store.syncing ? "同步中…" : store.lastSyncTimeText)
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .foregroundStyle(Theme.muted)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Theme.panel)
+                    .clipShape(Capsule())
+                    .overlay(Capsule().stroke(Theme.line, lineWidth: 1))
                 }
             }
             .onChange(of: speech.text) { _, newValue in

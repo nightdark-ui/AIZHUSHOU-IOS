@@ -57,6 +57,14 @@ final class AppStore: ObservableObject {
         return f.string(from: Date())
     }
 
+    /// 只要时间：17:42
+    var lastSyncTimeText: String {
+        guard let d = lastSync else { return "未同步" }
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        return f.string(from: d)
+    }
+
     var lastSyncText: String {
         guard let d = lastSync else { return "未同步" }
         let f = DateFormatter()
