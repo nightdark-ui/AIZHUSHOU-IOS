@@ -10,7 +10,7 @@ struct ChatView: View {
     @State private var previewState: PreviewState?
     @State private var saveHint = ""
     @State private var imageSelectMode = false
-    @State private var selectedImages = Set<String>()
+    @State private var selectedImages: [String: String] = [:]
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -228,33 +228,29 @@ struct ChatView: View {
                 if !line.images.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
                         ForEach(Array(line.images.enumerated()), id: \.offset) { idx, path in
-                            Button {
+                            let key = "\(line.id.uuidString)|\(path)"
+                            ZStack(alignment: .topLeading) {
+                                thumb(path)
                                 if imageSelectMode {
-                                    toggleImage(path)
-                                } else {
-                                    previewPaths = line.images
-                                    previewIndex = idx
-                                    previewState = PreviewState(paths: line.images, index: idx)
-                                }
-                            } label: {
-                                ZStack(alignment: .topLeading) {
-                                    thumb(path)
-                                    if imageSelectMode {
-                                        Image(systemName: selectedImages.contains(path)
-                                              ? "checkmark.circle.fill" : "circle")
-                                            .font(.system(size: 22))
-                                            .foregroundStyle(selectedImages.contains(path) ? Theme.ok : .white)
-                                            .padding(6)
-                                    }
+                                    Image(systemName: selectedImages[key] != nil
+                                          ? "checkmark.circle.fill" : "circle")
+                                        .font(.system(size: 22))
+                                        .foregroundStyle(selectedImages[key] != nil ? Theme.ok : .white)
+                                        .padding(6)
                                 }
                             }
-                            .buttonStyle(.plain)
-                            .simultaneousGesture(
-                                LongPressGesture(minimumDuration: 0.45).onEnded { _ in
-                                    imageSelectMode = true
-                                    selectedImages.insert(path)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                if imageSelectMode {
+                                    toggleImage(key: key, path: path)
+                                } else {
+                                    openPreview(path: path, fallback: line.images)
                                 }
-                            )
+                            }
+                            .onLongPressGesture(minimumDuration: 0.45) {
+                                if !imageSelectMode { imageSelectMode = true }
+                                selectedImages[key] = path
+                            }
                         }
                     }
                     .padding(.top, 2)
@@ -361,11 +357,11 @@ struct ChatView: View {
         }
     }
 
-    private func toggleImage(_ path: String) {
-        if selectedImages.contains(path) {
-            selectedImages.remove(path)
+    private func toggleImage(key: String, path: String) {
+        if selectedImages[key] != nil {
+            selectedImages.removeValue(forKey: key)
         } else {
-            selectedImages.insert(path)
+            selectedImages[key] = path
         }
     }
 
@@ -374,10 +370,23 @@ struct ChatView: View {
         selectedImages.removeAll()
     }
 
+    /// 打开预览：路径池是「整个对话里的所有图」，可以左右滑到别的消息
+    private func openPreview(path: String, fallback: [String]) {
+        var all: [String] = []
+        for line in store.chat {
+            for p in line.images where !all.contains(p) { all.append(p) }
+        }
+        if all.isEmpty { all = fallback }
+        let idx = all.firstIndex(of: path) ?? 0
+        previewPaths = all
+        previewIndex = idx
+        previewState = PreviewState(paths: all, index: idx)
+    }
+
     /// 批量保存到相册
     private func saveSelectedImages() {
         var saved = 0
-        for path in selectedImages {
+        for path in Set(selectedImages.values) {
             guard let img = UIImage(contentsOfFile: path) else { continue }
             UIImageWriteToSavedPhotosAlbum(img, nil, nil, nil)
             saved += 1
