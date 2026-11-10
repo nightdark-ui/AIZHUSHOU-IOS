@@ -602,20 +602,47 @@ final class AppStore: ObservableObject {
 
         let context = buildContext(for: question)
         do {
-            let reply = try await DeepSeekClient.ask(question: question,
-                                                     key: settings.deepSeekKey,
-                                                     context: context,
-                                                     history: chat,
-                                                     base: settings.apiBase,
-                                                     model: settings.apiModel)
-            // 数字校验：AI 不能编数据
-            if Rules.numbersOK(answer: reply, evidence: context, extra: question) {
-                var line = ChatLine(role: "assistant", text: greet(reply), mode: "llm")
-                line.images = imagesFor(question: question, answer: reply)
+            let (reply, evidence) = try await DeepSeekClient.askWithTools(
+                question: question,
+                key: settings.deepSeekKey,
+                history: chat,
+                base: settings.apiBase,
+                model: settings.apiModel,
+                products: products,
+                restock: restock
+            )
+
+            // 严格校验：数字和编号都必须来自工具数据
+            var finalReply = reply
+            var finalEvidence = evidence + "\n" + context
+
+            if !Rules.strictCheck(answer: finalReply, evidence: finalEvidence, question: question) {
+                // 给 AI 一次改正机会
+                let retry = try? await DeepSeekClient.askWithTools(
+                    question: question,
+                    key: settings.deepSeekKey,
+                    history: chat,
+                    base: settings.apiBase,
+                    model: settings.apiModel,
+                    products: products,
+                    restock: restock,
+                    extraInstruction: "上一次回答里出现了表格数据里没有的数字或编号。这一次只能原样照抄工具返回值，不得推算、不得四舍五入、不得编造。"
+                )
+                if let retry, Rules.strictCheck(answer: retry.text,
+                                                evidence: retry.evidence + "\n" + context,
+                                                question: question) {
+                    finalReply = retry.text
+                    finalEvidence = retry.evidence + "\n" + context
+                }
+            }
+
+            if Rules.strictCheck(answer: finalReply, evidence: finalEvidence, question: question) {
+                var line = ChatLine(role: "assistant", text: greet(finalReply), mode: "llm")
+                line.images = imagesFor(question: question, answer: finalReply)
                 chat.append(line)
             } else {
                 chat.append(ChatLine(role: "assistant",
-                                     text: "主人，AI 报的数字跟表格对不上，我就不照着说了。\n你问具体编号的库存或价格，我直接查给你。",
+                                     text: "主人，AI 的回答里出现了表格没有的数字或编号，我已经拦下来了，不会给你错的数据。\n具体编号的库存和价格我都能直接查，你发编号就行。",
                                      mode: "rule"))
             }
         } catch {

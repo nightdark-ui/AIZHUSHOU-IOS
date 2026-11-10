@@ -831,6 +831,30 @@ enum Rules {
 
     // MARK: - AI 数字校验
 
+    /// 严格校验：回答里的每个数字、每个编号，都必须来自工具返回或用户原话
+    static func strictCheck(answer: String, evidence: String, question: String) -> Bool {
+        // 数字
+        let allowedNums = Set(numbers(in: evidence)).union(numbers(in: question))
+        let white: Set<String> = ["0.9144", "1.0936"]
+
+        for n in numbers(in: answer) {
+            if allowedNums.contains(n) || white.contains(n) { continue }
+            if let v = Double(n),
+               allowedNums.contains(where: { Double($0).map { abs($0 - v) < 0.001 } ?? false }) { continue }
+            return false
+        }
+
+        // 编号
+        let knownCodes = Set(extractCodes(evidence).map { $0.uppercased() })
+        let askedCodes = Set(extractCodes(question).map { $0.uppercased() })
+        for c in extractCodes(answer) {
+            let u = c.uppercased()
+            if knownCodes.contains(u) || askedCodes.contains(u) { continue }
+            return false
+        }
+        return true
+    }
+
     static func numbersOK(answer: String, evidence: String, extra: String) -> Bool {
         let tokens = numbers(in: answer)
         if tokens.isEmpty { return true }
