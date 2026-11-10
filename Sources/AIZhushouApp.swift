@@ -9,6 +9,12 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         UIWindow.appearance().backgroundColor = bg
         return true
     }
+
+    func applicationDidBecomeActive(_ application: UIApplication) {
+        for w in application.windows {
+            w.backgroundColor = .white
+        }
+    }
 }
 
 @main

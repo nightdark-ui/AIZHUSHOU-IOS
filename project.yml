@@ -19,6 +19,7 @@ targets:
         CFBundleVersion: "1"
         UILaunchScreen:
           UIColorName: LaunchBackground
+        UIUserInterfaceStyle: Light
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         UIFileSharingEnabled: true
