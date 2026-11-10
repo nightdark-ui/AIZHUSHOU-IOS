@@ -401,6 +401,19 @@ final class AppStore: ObservableObject {
         }
     }
 
+    /// 一次确认多条
+    func ackMany(_ items: [RestockItem]) {
+        guard !items.isEmpty else { return }
+        for item in items {
+            let key = Storage.ackKey(sku: item.sku, prevDate: item.prevDate, qty: item.qty)
+            Storage.addAck(key)
+        }
+        let skus = Set(items.map { $0.sku })
+        restock.removeAll { skus.contains($0.sku) }
+        Notifier.notifyRestockIfNeeded(count: restock.count, skus: restock.map { $0.sku })
+        Task { await syncAcks() }
+    }
+
     // MARK: - 对话
 
     func ask(_ text: String) async {

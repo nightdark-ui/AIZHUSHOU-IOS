@@ -4,6 +4,8 @@ struct RestockView: View {
     @EnvironmentObject private var store: AppStore
     @State private var tab = 0
     @State private var showRules = false
+    @State private var selecting = false
+    @State private var selected = Set<String>()
 
     var body: some View {
         NavigationStack {
@@ -26,6 +28,14 @@ struct RestockView: View {
             .navigationTitle("补货")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    if tab == 0 && !store.restock.isEmpty {
+                        Button(selecting ? "完成" : "选择") {
+                            selecting.toggle()
+                            if !selecting { selected.removeAll() }
+                        }
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showRules.toggle()
@@ -41,6 +51,10 @@ struct RestockView: View {
                 if newValue == 1, store.history.isEmpty {
                     Task { await store.loadHistory() }
                 }
+                if newValue != 0 {
+                    selecting = false
+                    selected.removeAll()
+                }
             }
         }
     }
@@ -55,28 +69,17 @@ struct RestockView: View {
                     ② 今天的数量低于提醒线
                     数量没变小、或者还在提醒线以上，都不会提醒。
                     """)
-
                     rule(title: "提醒线", body: """
                     默认 300 码。可以给单个款单独设：
                     库存页 → 左滑那一行 →「提醒线」→ 输入数字。
-                    设过之后行首会有橙色「线xxx」标签。
                     """)
-
-                    rule(title: "确认做完了", body: """
-                    补货页 → 左滑那一条 →「已补货」。
-                    确认后这条会消失，并且同步给电脑版；
-                    电脑上确认的，也会同步回手机。
+                    rule(title: "怎么确认", body: """
+                    点每条的「确认」，或者右上角「选择」勾多个一起确认。
+                    确认后这条会消失，并同步给电脑版。
                     """)
-
                     rule(title: "数据从哪来", body: """
-                    每次刷新库存时，从 WPS 表格读取当天的数量，
-                    并在本机记一份快照（只留最近 60 天）。
-                    所以补货判断完全在手机上算，断网也能看。
-                    """)
-
-                    rule(title: "什么时候提醒", body: """
-                    每次刷新库存发现有待补的款，就会弹一次通知
-                    （5 分钟内不重复）。补货清空后不再提醒。
+                    每次刷新库存时从 WPS 表格读取当天数量，
+                    并在本机记一份快照（保留最近 60 天）。
                     """)
                 }
                 .padding(16)
@@ -118,69 +121,113 @@ struct RestockView: View {
             )
         } else {
             List {
-                Section {
-                    ForEach(store.restock) { item in
-                        row(item)
-                    }
+                ForEach(store.restock) { item in
+                    row(item)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            if selecting { toggle(item.sku) }
+                        }
                 }
             }
             .listStyle(.plain)
             .background(Theme.bg)
             .refreshable { await store.refreshRestock() }
+            .safeAreaInset(edge: .bottom) {
+                if selecting {
+                    HStack(spacing: 14) {
+                        Button(selected.count == store.restock.count ? "取消全选" : "全选") {
+                            if selected.count == store.restock.count {
+                                selected.removeAll()
+                            } else {
+                                selected = Set(store.restock.map { $0.sku })
+                            }
+                        }
+                        .font(.system(size: 14))
+
+                        Spacer()
+
+                        Button {
+                            let items = store.restock.filter { selected.contains($0.sku) }
+                            store.ackMany(items)
+                            selecting = false
+                            selected.removeAll()
+                        } label: {
+                            Text("确认 \(selected.count) 个")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .background(selected.isEmpty ? Theme.muted : Theme.ok)
+                                .clipShape(Capsule())
+                        }
+                        .disabled(selected.isEmpty)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Theme.panel)
+                    .overlay(Rectangle().fill(Theme.line).frame(height: 1), alignment: .top)
+                }
+            }
+        }
+    }
+
+    private func toggle(_ sku: String) {
+        if selected.contains(sku) {
+            selected.remove(sku)
+        } else {
+            selected.insert(sku)
         }
     }
 
     private func row(_ item: RestockItem) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(item.sku)
-                    .font(.system(.body, design: .monospaced))
-                    .fontWeight(.semibold)
-                Spacer()
-                Text(item.levelLabel)
-                    .font(.caption2)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(item.level == "danger" ? Theme.dangerSoft : Theme.warnSoft)
-                    .foregroundStyle(item.level == "danger" ? Theme.danger : Theme.warn)
-                    .clipShape(Capsule())
+        HStack(alignment: .top, spacing: 10) {
+            if selecting {
+                Image(systemName: selected.contains(item.sku)
+                      ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 20))
+                    .foregroundStyle(selected.contains(item.sku) ? Theme.ok : Theme.muted)
+                    .padding(.top, 2)
             }
-            HStack {
-                Text("少了 \(Int(abs(item.change)))")
-                    .font(.caption)
-                    .foregroundStyle(Theme.warn)
-                Spacer()
-                Text("剩 \(Int(item.qty ?? 0))")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundStyle((item.qty ?? 0) <= 0 ? Theme.danger : Theme.text)
-            }
-            Button {
-                store.ack(item)
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "checkmark.circle.fill")
-                    Text("已补货")
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(item.sku)
+                        .font(.system(.body, design: .monospaced))
+                        .fontWeight(.semibold)
+                    Spacer()
+                    Text(item.levelLabel)
+                        .font(.caption2)
+                        .foregroundStyle(item.level == "danger" ? Theme.danger : Theme.warn)
                 }
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Theme.ok)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(Theme.okSoft)
-                .clipShape(Capsule())
+                HStack {
+                    Text("少了 \(Int(abs(item.change)))")
+                        .font(.caption)
+                        .foregroundStyle(Theme.warn)
+                    Spacer()
+                    Text("剩 \(Int(item.qty ?? 0))")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundStyle((item.qty ?? 0) <= 0 ? Theme.danger : Theme.text)
+                    if !selecting {
+                        Button {
+                            store.ack(item)
+                        } label: {
+                            Text("确认")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(Theme.brand)
+                                .padding(.leading, 8)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
             }
-            .buttonStyle(.plain)
-            .padding(.top, 3)
-            Text(item.reason)
-                .font(.caption2)
-                .foregroundStyle(Theme.muted)
         }
         .padding(.vertical, 2)
         .swipeActions(edge: .trailing) {
-            Button(role: .destructive) {
+            Button {
                 store.ack(item)
             } label: {
-                Label("已补货", systemImage: "checkmark")
+                Label("确认", systemImage: "checkmark")
             }
         }
     }
