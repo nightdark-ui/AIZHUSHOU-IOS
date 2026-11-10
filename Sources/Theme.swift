@@ -47,3 +47,24 @@ extension View {
         modifier(Card(padding: padding))
     }
 }
+
+/// 简笔小钟（细线条，不用系统图标）
+struct MiniClock: View {
+    var size: CGFloat = 10
+    var color: Color = Theme.muted
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(color, lineWidth: 1)
+            Path { p in
+                p.move(to: CGPoint(x: size / 2, y: size / 2))
+                p.addLine(to: CGPoint(x: size / 2, y: size * 0.26))
+                p.move(to: CGPoint(x: size / 2, y: size / 2))
+                p.addLine(to: CGPoint(x: size * 0.74, y: size / 2))
+            }
+            .stroke(color, lineWidth: 1)
+        }
+        .frame(width: size, height: size)
+    }
+}

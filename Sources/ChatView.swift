@@ -58,10 +58,12 @@ struct ChatView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack(spacing: 4) {
-                        Image(systemName: store.syncing
-                              ? "arrow.triangle.2.circlepath"
-                              : "clock")
-                            .font(.system(size: 9, weight: .medium))
+                        if store.syncing {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .font(.system(size: 9, weight: .medium))
+                        } else {
+                            MiniClock(size: 9)
+                        }
                         Text(store.syncing ? "同步中…" : store.lastSyncTimeText)
                             .font(.system(size: 11, weight: .medium))
                     }
