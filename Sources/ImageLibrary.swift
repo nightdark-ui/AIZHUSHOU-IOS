@@ -67,6 +67,16 @@ final class ImageLibrary: ObservableObject {
         var baseMap: [String: [URL]] = [:]
         var total = 0
 
+        // 优先读图库目录里的映射文件（文件名是哈希时用得上）
+        if let mapping = loadMapping(root: root) {
+            exact = mapping
+            base = [:]
+            fileCount = mapping.values.reduce(0) { $0 + $1.count }
+            folderName = root.lastPathComponent
+            errorText = ""
+            return
+        }
+
         let fm = FileManager.default
         if let it = fm.enumerator(at: root,
                                   includingPropertiesForKeys: [.isRegularFileKey],
@@ -93,6 +103,29 @@ final class ImageLibrary: ObservableObject {
         fileCount = total
         folderName = root.lastPathComponent
         if total == 0 { errorText = "这个文件夹里没找到图片" }
+    }
+
+    /// 读目录里的 codes.json：{ "2002": ["all-new/images/xxx.jpg"] }
+    private func loadMapping(root: URL) -> [String: [URL]]? {
+        let names = ["codes.json", "图库索引.json", "index.json"]
+        for n in names {
+            let u = root.appendingPathComponent(n)
+            guard let data = try? Data(contentsOf: u),
+                  let dict = try? JSONSerialization.jsonObject(with: data) as? [String: [String]]
+            else { continue }
+
+            var out: [String: [URL]] = [:]
+            for (code, list) in dict {
+                var urls: [URL] = []
+                for rel in list {
+                    let f = root.appendingPathComponent(rel)
+                    if FileManager.default.fileExists(atPath: f.path) { urls.append(f) }
+                }
+                if !urls.isEmpty { out[code.uppercased()] = urls }
+            }
+            if !out.isEmpty { return out }
+        }
+        return nil
     }
 
     // MARK: - 按编号取图（拷到沙盒里再显示）
