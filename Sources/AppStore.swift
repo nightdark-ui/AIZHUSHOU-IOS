@@ -20,6 +20,7 @@ final class AppStore: ObservableObject {
 
     init() {
         loadSettings()
+        Notifier.requestPermission()
         products = Storage.loadProducts()
         if !products.isEmpty {
             statusText = "本地有 \(products.count) 个款"
@@ -164,6 +165,9 @@ final class AppStore: ObservableObject {
             }
             statusText = "同步成功：\(result.count) 个款，补货 \(restock.count) 个（\(lastSyncText)）"
                 + (prices ? "" : " · 仅库存")
+
+            Notifier.scheduleRestock(count: restock.count)
+            await syncAcks()
         } catch {
             statusText = "同步失败：\(error.localizedDescription)"
         }
@@ -214,6 +218,79 @@ final class AppStore: ObservableObject {
         let key = Storage.ackKey(sku: item.sku, prevDate: item.prevDate, qty: item.qty)
         Storage.addAck(key)
         restock.removeAll { $0.sku == item.sku }
+        Notifier.scheduleRestock(count: restock.count)
+        Task { await syncAcks() }
+    }
+
+    // MARK: - 和电脑双向同步
+
+    /// 推自己的确认记录 + 拉电脑的，最后合并
+    func syncAcks() async {
+        let base = settings.pcBaseURL.trimmingCharacters(in: .whitespaces)
+        let key = settings.syncKey.trimmingCharacters(in: .whitespaces)
+        guard !base.isEmpty, !key.isEmpty else { return }
+
+        // 本地确认记录 → 发给电脑
+        let today = self.today
+        var pushList: [[String: Any]] = []
+        for raw in Storage.loadAcks() {
+            let parts = raw.components(separatedBy: "|")
+            guard parts.count == 3 else { continue }
+            var item: [String: Any] = ["sku": parts[0], "prev_date": parts[1],
+                                       "ack_date": today,
+                                       "ack_at": ISO8601DateFormatter().string(from: Date())]
+            if let q = Double(parts[2]) { item["qty"] = Int(q) }
+            pushList.append(item)
+        }
+
+        // 本地单款提醒线
+        var thresholds: [[String: Any]] = []
+        for p in products where p.minQty != nil {
+            thresholds.append(["sku": p.sku, "min_qty": Int(p.minQty!)])
+        }
+
+        do {
+            let result = try await SyncClient.push(base: base, key: key,
+                                                   acks: pushList, thresholds: thresholds)
+
+            var added = 0
+            for a in result.acks {
+                guard let sku = a["sku"] as? String else { continue }
+                let prev = a["prev_date"] as? String ?? ""
+                let qty = (a["qty"] as? NSNumber)?.doubleValue
+                let k = Storage.ackKey(sku: sku, prevDate: prev, qty: qty)
+                if !Storage.loadAcks().contains(k) {
+                    Storage.addAck(k)
+                    added += 1
+                }
+            }
+
+            var changed = 0
+            for t in result.thresholds {
+                guard let sku = t["sku"] as? String else { continue }
+                let v = (t["min_qty"] as? NSNumber)?.doubleValue
+                if let idx = products.firstIndex(where: { $0.sku == sku }) {
+                    if products[idx].minQty != v {
+                        products[idx].minQty = v
+                        changed += 1
+                    }
+                }
+            }
+            if changed > 0 { Storage.saveProducts(products) }
+
+            restock = RestockEngine.build(products: products, day: today,
+                                          threshold: settings.threshold,
+                                          acks: Storage.loadAcks())
+            Notifier.scheduleRestock(count: restock.count)
+            if added > 0 || changed > 0 {
+                statusText += "（已和电脑同步 +少\(added)条/+改\(changed)条）"
+            }
+        } catch {
+            // 电脑没开/连不上不影响手机使用
+            if !products.isEmpty {
+                statusText += "（电脑未连接）"
+            }
+        }
     }
 
     // MARK: - 对话

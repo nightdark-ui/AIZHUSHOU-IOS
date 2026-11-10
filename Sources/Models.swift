@@ -56,4 +56,8 @@ struct AppSettings: Codable {
 
     var deepSeekKey: String = ""
     var threshold: Double = 300
+
+    // 和电脑版双向同步
+    var pcBaseURL: String = ""
+    var syncKey: String = ""
 }

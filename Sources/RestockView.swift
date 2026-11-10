@@ -24,13 +24,14 @@ struct RestockView: View {
                             Text("规则：库存比上次减少，且低于提醒线 \(Int(store.settings.threshold))")
                         }
                     }
-                    .listStyle(.insetGrouped)
+                    .listStyle(.plain)
+                    .background(Theme.bg)
                 }
             }
             .navigationTitle("补货")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Text("\(store.restock.count) 个").font(.caption).foregroundStyle(.secondary)
+                    Text("\(store.restock.count) 个").font(.caption).foregroundStyle(Theme.muted)
                 }
             }
             .refreshable { await store.refreshRestock() }
@@ -48,23 +49,23 @@ struct RestockView: View {
                     .font(.caption2)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(item.level == "danger" ? Color.red.opacity(0.15) : Color.orange.opacity(0.15))
-                    .foregroundStyle(item.level == "danger" ? .red : .orange)
+                    .background(item.level == "danger" ? Theme.dangerSoft : Theme.warnSoft)
+                    .foregroundStyle(item.level == "danger" ? Theme.danger : Theme.warn)
                     .clipShape(Capsule())
             }
             HStack {
                 Text("少了 \(Int(abs(item.change)))")
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Theme.warn)
                 Spacer()
                 Text("剩 \(Int(item.qty ?? 0))")
                     .font(.subheadline)
                     .fontWeight(.medium)
-                    .foregroundStyle((item.qty ?? 0) <= 0 ? .red : .primary)
+                    .foregroundStyle((item.qty ?? 0) <= 0 ? Theme.danger : Theme.text)
             }
             Text(item.reason)
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.muted)
         }
         .padding(.vertical, 2)
         .swipeActions(edge: .trailing) {

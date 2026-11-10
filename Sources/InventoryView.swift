@@ -44,7 +44,7 @@ struct InventoryView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Text(store.lastSyncText)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.muted)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -71,7 +71,7 @@ struct InventoryView: View {
             .safeAreaInset(edge: .bottom) {
                 Text(store.statusText)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.muted)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 6)
                     .background(.bar)
@@ -104,15 +104,15 @@ struct InventoryView: View {
                             .font(.caption2)
                             .padding(.horizontal, 5)
                             .padding(.vertical, 1)
-                            .background(Color.orange.opacity(0.15))
-                            .foregroundStyle(.orange)
+                            .background(Theme.warnSoft)
+                            .foregroundStyle(Theme.warn)
                             .clipShape(Capsule())
                     }
                 }
                 if let t = p.qtyText, !t.isEmpty {
                     Text(t)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.muted)
                 }
             }
             Spacer()
@@ -124,7 +124,7 @@ struct InventoryView: View {
                 if let price = p.priceText, !price.isEmpty {
                     Text("¥\(price)")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.muted)
                 }
             }
         }
@@ -141,11 +141,11 @@ struct InventoryView: View {
 
     private func qtyColor(_ p: Product) -> Color {
         if let q = p.qty {
-            if q <= 0 { return .red }
-            if q < (p.minQty ?? store.settings.threshold) { return .orange }
+            if q <= 0 { return Theme.danger }
+            if q < (p.minQty ?? store.settings.threshold) { return Theme.warn }
             return .primary
         }
-        if let t = p.qtyText, !t.isEmpty { return .orange }
+        if let t = p.qtyText, !t.isEmpty { return Theme.warn }
         return .secondary
     }
 }
