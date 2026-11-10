@@ -450,7 +450,8 @@ final class AppStore: ObservableObject {
 
         // 上一轮问过某个编号，这轮只说「价格呢」「库存呢」→ 拼上上次的编号
         var effective = question
-        let intentWords = ["价格", "多少钱", "库存", "还有多少", "剩多少", "有货"]
+        let intentWords = ["价格", "多少钱", "库存", "还有多少", "剩多少", "有货",
+                           "图片", "照片", "长什么样", "米"]
         if Rules.extractCodes(effective).isEmpty, let last = lastSku,
            intentWords.contains(where: { effective.contains($0) }) {
             effective = effective + " " + last
@@ -470,6 +471,10 @@ final class AppStore: ObservableObject {
             line.images = imagesFor(question: effective, answer: answer)
             if let turn = result.turn, turn.kind == "choose" {
                 line.options = turn.options
+            }
+            let wantsImage = effective.contains("图片") || effective.contains("照片")
+            if wantsImage && line.images.isEmpty && line.options.isEmpty {
+                line.text += "\n（图库里没找到这个编号的图，检查设置里的图库文件夹）"
             }
             chat.append(line)
             return

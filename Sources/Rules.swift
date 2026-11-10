@@ -156,15 +156,13 @@ enum Rules {
 
         // 7a. 有多种写法：2002 / 2002-1
         let variants = variantList(code, in: products)
-        if variants.count > 1 {
-            var lines = ["「\(code)」有 \(variants.count) 种写法，点下面选一个："]
-            let picks = variants.prefix(8).map { $0.sku }
-            for v in variants.prefix(8) {
-                lines.append("· \(v.sku)  \(stockText(v))")
-            }
+        let asksSomething = msg.contains("价格") || msg.contains("多少钱") || msg.contains("价")
+            || msg.contains("库存") || msg.contains("还有") || msg.contains("剩")
+            || msg.contains("米") || msg.contains("图片") || msg.contains("照片")
+        if variants.count > 1 && !asksSomething {
             var turn = RuleTurn(kind: "choose")
-            turn.options = picks
-            return (lines.joined(separator: "\n"), turn)
+            turn.options = variants.prefix(8).map { $0.sku }
+            return ("「\(code)」有 \(variants.count) 种写法，点下面选一个：", turn)
         }
 
         guard let p = find(code, in: products) else {
@@ -176,6 +174,11 @@ enum Rules {
                 return (lines.joined(separator: "\n"), nil)
             }
             return ("没找到「\(code)」。可以说完整编号（比如 2002），或者问「2001-2010 库存」。", nil)
+        }
+
+        // 要看图
+        if msg.contains("图片") || msg.contains("照片") || msg.contains("长什么样") {
+            return ("\(p.sku) 的图片：", nil)
         }
 
         let asksPrice = msg.contains("价格") || msg.contains("多少钱") || msg.contains("价")
