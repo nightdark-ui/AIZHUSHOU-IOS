@@ -40,6 +40,11 @@ enum Rules {
             return (off, nil)
         }
 
+        // 1c. 比某个编号贵 / 便宜
+        if let cmp = comparison(msg, products: products) {
+            return (cmp, nil)
+        }
+
         // 2. 价格区间（价格10到20的款）
         if let range = priceRange(msg) {
             let t = RuleTurn(kind: "price", low: range.0, high: range.1, shown: 0)
@@ -144,6 +149,41 @@ enum Rules {
         return (stockText(p) + metersSuffix(p, want: wantMeters), nil)
     }
 
+    /// 「比2002贵的花」「比2002便宜的」
+    static func comparison(_ msg: String, products: [Product]) -> String? {
+        guard msg.contains("比") else { return nil }
+        let cheaper = msg.contains("便宜") || msg.contains("低")
+        let pricier = msg.contains("贵") || msg.contains("高")
+        guard cheaper || pricier else { return nil }
+
+        guard let code = extractCodes(msg).first,
+              let base = find(code, in: products),
+              let basePrice = base.price else { return nil }
+
+        let pool = products.filter { p in
+            guard let v = p.price else { return false }
+            return cheaper ? v < basePrice : v > basePrice
+        }.sorted { a, b in
+            let x = a.price ?? 0, y = b.price ?? 0
+            return cheaper ? x > y : x < y
+        }
+
+        guard !pool.isEmpty else {
+            return "没有比 \(base.sku)（\(formatPrice(basePrice))）" + (cheaper ? "更便宜的款。" : "更贵的款。")
+        }
+
+        var lines = ["比 \(base.sku)（\(formatPrice(basePrice))）" + (cheaper ? "便宜的有 \(pool.count) 款：" : "贵的有 \(pool.count) 款：")]
+        for p in pool.prefix(30) {
+            lines.append("\(p.sku)  \(formatPrice(p.price ?? 0))")
+        }
+        if pool.count > 30 { lines.append("……还有 \(pool.count - 30) 款") }
+        return lines.joined(separator: "\n")
+    }
+
+    static func formatPrice(_ v: Double) -> String {
+        v == v.rounded() ? "\(Int(v))" : String(format: "%.1f", v)
+    }
+
     // MARK: - 分页（价格区间）
 
     static func pricePage(_ turn: RuleTurn, products: [Product]) -> (String?, RuleTurn?) {
@@ -190,8 +230,10 @@ enum Rules {
         return keys.contains { msg.contains($0) }
     }
 
-    /// 价格区间：价格10到20 / 10-20元的 / 15到30块
+    /// 价格区间：价格10到20 / 10-20元的 / 15到30块 / 10元左右
     static func priceRange(_ msg: String) -> (Double, Double)? {
+        // 单个数字 + 左右/上下
+        if let single = singlePriceAround(msg) { return single }
         let hasPriceWord = msg.contains("价") || msg.contains("元") || msg.contains("块")
         let pattern = "(\\d{1,5}(?:\\.\\d+)?)\\s*(?:-|~|到|至|—)\\s*(\\d{1,5}(?:\\.\\d+)?)"
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
@@ -208,6 +250,19 @@ enum Rules {
             if max(a, b) >= 1000 { return nil }
         }
         return (min(a, b), max(a, b))
+    }
+
+    /// 「10元左右」「15块上下」
+    static func singlePriceAround(_ msg: String) -> (Double, Double)? {
+        guard msg.contains("元") || msg.contains("块") || msg.contains("价") else { return nil }
+        let pattern = "(\\d{1,5}(?:\\.\\d+)?)\\s*(?:元|块|钱)?\\s*(?:左右|上下|附近|差不多|大约|约)"
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let ns = msg as NSString
+        guard let m = regex.firstMatch(in: msg, range: NSRange(location: 0, length: ns.length)),
+              m.numberOfRanges > 1,
+              let v = Double(ns.substring(with: m.range(at: 1))), v > 0 else { return nil }
+        let delta = v < 20 ? 2.0 : max(2.0, (v * 0.15).rounded())
+        return (max(0, v - delta), v + delta)
     }
 
     /// 编号区间：2001-2010 / SL100-120

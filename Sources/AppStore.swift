@@ -468,9 +468,19 @@ final class AppStore: ObservableObject {
                                      mode: "rule"))
             }
         } catch {
-            chat.append(ChatLine(role: "assistant",
-                                 text: "主人，这个问题需要联网的 AI，但现在用不了：\(error.localizedDescription)",
-                                 mode: "rule"))
+            let msg: String
+            if settings.deepSeekKey.trimmingCharacters(in: .whitespaces).isEmpty {
+                msg = "主人，这个问题要联网的 AI 才能答，先去「设置 → AI 对话」填 DeepSeek API Key。\n"
+                    + "现在本地能直接答的有：\n"
+                    + "· 编号查库存/价格（2002 库存）\n"
+                    + "· 编号区间（2001-2010）\n"
+                    + "· 价格区间（10元左右 / 价格10到20）\n"
+                    + "· 比某个编号贵/便宜（比2002贵的）\n"
+                    + "· 有什么要补货的"
+            } else {
+                msg = "主人，这个问题需要联网的 AI，但现在用不了：\(error.localizedDescription)"
+            }
+            chat.append(ChatLine(role: "assistant", text: msg, mode: "rule"))
         }
     }
 
