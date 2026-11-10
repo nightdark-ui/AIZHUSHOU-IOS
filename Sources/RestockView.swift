@@ -30,9 +30,12 @@ struct RestockView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     if tab == 0 && !store.restock.isEmpty {
-                        Button(selecting ? "完成" : "选择") {
+                        Button {
                             selecting.toggle()
                             if !selecting { selected.removeAll() }
+                        } label: {
+                            Text(selecting ? "完成" : "选择")
+                                .pill(active: selecting)
                         }
                     }
                 }
@@ -40,7 +43,7 @@ struct RestockView: View {
                     Button {
                         showRules.toggle()
                     } label: {
-                        Image(systemName: "questionmark.circle")
+                        Text("规则").pill()
                     }
                 }
             }
@@ -135,14 +138,16 @@ struct RestockView: View {
             .safeAreaInset(edge: .bottom) {
                 if selecting {
                     HStack(spacing: 14) {
-                        Button(selected.count == store.restock.count ? "取消全选" : "全选") {
+                        Button {
                             if selected.count == store.restock.count {
                                 selected.removeAll()
                             } else {
                                 selected = Set(store.restock.map { $0.sku })
                             }
+                        } label: {
+                            Text(selected.count == store.restock.count ? "取消全选" : "全选")
+                                .pill(active: !selected.isEmpty)
                         }
-                        .font(.system(size: 14))
 
                         Spacer()
 
@@ -153,12 +158,8 @@ struct RestockView: View {
                             selected.removeAll()
                         } label: {
                             Text("确认 \(selected.count) 个")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
-                                .background(selected.isEmpty ? Theme.muted : Theme.ok)
-                                .clipShape(Capsule())
+                                .pill(active: !selected.isEmpty,
+                                      filled: !selected.isEmpty)
                         }
                         .disabled(selected.isEmpty)
                     }
@@ -200,11 +201,11 @@ struct RestockView: View {
                         .foregroundStyle(item.level == "danger" ? Theme.danger : Theme.warn)
                 }
                 HStack {
-                    Text("少了 \(Int(abs(item.change)))")
+                    Text("原 \(Int(item.prevQty ?? 0)) → 现 \(Int(item.qty ?? 0))")
                         .font(.caption)
                         .foregroundStyle(Theme.warn)
                     Spacer()
-                    Text("剩 \(Int(item.qty ?? 0))")
+                    Text("少了 \(Int(abs(item.change)))")
                         .font(.subheadline)
                         .fontWeight(.medium)
                         .foregroundStyle((item.qty ?? 0) <= 0 ? Theme.danger : Theme.text)
@@ -213,11 +214,16 @@ struct RestockView: View {
                             store.ack(item)
                         } label: {
                             Text("确认")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundStyle(Theme.brand)
-                                .padding(.leading, 8)
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(Theme.ok)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .background(Theme.okSoft)
+                                .clipShape(Capsule())
+                                .overlay(Capsule().stroke(Theme.ok.opacity(0.35), lineWidth: 1))
                         }
                         .buttonStyle(.plain)
+                        .padding(.leading, 6)
                     }
                 }
             }

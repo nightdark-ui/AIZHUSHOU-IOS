@@ -37,7 +37,7 @@ enum RestockEngine {
                 prevQty: prevQty,
                 prevDate: prev.date,
                 change: change,
-                reason: "\(prev.date) 的 \(Int(prevQty)) → 今天 \(Int(qty))（\(Int(change))）；当前 \(Int(qty))，低于 \(Int(limit))",
+                reason: "原来 \(Int(prevQty)) 码（\(prev.date)）→ 现在 \(Int(qty)) 码，少了 \(Int(abs(change)))；低于提醒线 \(Int(limit))",
                 openedDay: day
             ))
         }

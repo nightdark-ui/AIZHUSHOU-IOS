@@ -23,7 +23,8 @@ enum Notifier {
 
     /// 只有出现「新的补货款」才提醒。
     /// 同一批货反复刷新不会再弹；确认掉一部分也不会弹。
-    static func notifyRestockIfNeeded(count: Int, skus: [String] = []) {
+    static func notifyRestockIfNeeded(count: Int, skus: [String] = [],
+                                      detail: [(String, Double, Double)] = []) {
         guard count > 0 else { return }
 
         let sigKey = "aizhushou.notify.skus"
@@ -47,9 +48,17 @@ enum Notifier {
 
         let content = UNMutableNotificationContent()
         content.title = "有 \(count) 个款需要补货"
-        content.body = fresh.count >= count
-            ? "打开 AI小助手看看补货清单。"
-            : "新增 \(fresh.count) 个：\(fresh.sorted().prefix(5).joined(separator: "、"))"
+        // 正文写清「原来多少 → 现在多少」
+        let lines: [String] = detail.prefix(3).map { sku, prev, now in
+            "\(sku)：原 \(Int(prev)) → 现 \(Int(now))"
+        }
+        if lines.isEmpty {
+            content.body = fresh.count >= count
+                ? "打开 AI小助手看看补货清单。"
+                : "新增 \(fresh.count) 个：\(fresh.sorted().prefix(5).joined(separator: "、"))"
+        } else {
+            content.body = lines.joined(separator: "\n")
+        }
         content.sound = .default
 
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)

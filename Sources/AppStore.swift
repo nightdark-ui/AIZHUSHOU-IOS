@@ -200,7 +200,9 @@ final class AppStore: ObservableObject {
             statusText = "同步成功：\(result.count) 个款，补货 \(restock.count) 个（\(lastSyncText)）"
                 + (prices ? "" : " · 仅库存")
 
-            Notifier.notifyRestockIfNeeded(count: restock.count, skus: restock.map { $0.sku })
+            Notifier.notifyRestockIfNeeded(count: restock.count,
+                                       skus: restock.map { $0.sku },
+                                       detail: restock.map { ($0.sku, $0.prevQty ?? 0, $0.qty ?? 0) })
             await syncAcks()
         } catch {
             statusText = "同步失败：\(error.localizedDescription)"
@@ -267,7 +269,9 @@ final class AppStore: ObservableObject {
         let key = Storage.ackKey(sku: item.sku, prevDate: item.prevDate, qty: item.qty)
         Storage.addAck(key)
         restock.removeAll { $0.sku == item.sku }
-        Notifier.notifyRestockIfNeeded(count: restock.count, skus: restock.map { $0.sku })
+        Notifier.notifyRestockIfNeeded(count: restock.count,
+                                       skus: restock.map { $0.sku },
+                                       detail: restock.map { ($0.sku, $0.prevQty ?? 0, $0.qty ?? 0) })
         Task { await syncAcks() }
     }
 
@@ -381,7 +385,9 @@ final class AppStore: ObservableObject {
             restock = RestockEngine.build(products: products, day: today,
                                           threshold: settings.threshold,
                                           acks: Storage.loadAcks())
-            Notifier.notifyRestockIfNeeded(count: restock.count, skus: restock.map { $0.sku })
+            Notifier.notifyRestockIfNeeded(count: restock.count,
+                                       skus: restock.map { $0.sku },
+                                       detail: restock.map { ($0.sku, $0.prevQty ?? 0, $0.qty ?? 0) })
             var msg = "同步成功：电脑共 \(result.acks.count) 条确认，新增 \(added) 条"
             if changed > 0 {
                 let shown = changedNames.prefix(5).joined(separator: "、")
@@ -410,7 +416,9 @@ final class AppStore: ObservableObject {
         }
         let skus = Set(items.map { $0.sku })
         restock.removeAll { skus.contains($0.sku) }
-        Notifier.notifyRestockIfNeeded(count: restock.count, skus: restock.map { $0.sku })
+        Notifier.notifyRestockIfNeeded(count: restock.count,
+                                       skus: restock.map { $0.sku },
+                                       detail: restock.map { ($0.sku, $0.prevQty ?? 0, $0.qty ?? 0) })
         Task { await syncAcks() }
     }
 

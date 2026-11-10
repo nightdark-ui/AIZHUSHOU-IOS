@@ -3,7 +3,6 @@ import UIKit
 
 struct ChatView: View {
     @EnvironmentObject private var store: AppStore
-    @StateObject private var speech = SpeechListener()
     @State private var input = ""
     @State private var showModelInfo = false
     @State private var previewPaths: [String] = []
@@ -39,15 +38,6 @@ struct ChatView: View {
                     }
                 }
 
-                if !speech.errorText.isEmpty {
-                    Text(speech.errorText)
-                        .font(.caption2)
-                        .foregroundStyle(Theme.danger)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 14)
-                        .padding(.bottom, 4)
-                }
-
                 composer
             }
             .navigationTitle("AI 小助手")
@@ -74,9 +64,6 @@ struct ChatView: View {
                     .clipShape(Capsule())
                     .overlay(Capsule().stroke(Theme.line, lineWidth: 1))
                 }
-            }
-            .onChange(of: speech.text) { _, newValue in
-                if !newValue.isEmpty { input = newValue }
             }
             .sheet(item: $previewState) { state in
                 viewer(state)
@@ -118,18 +105,6 @@ struct ChatView: View {
 
     private var composer: some View {
         HStack(spacing: 8) {
-            Button {
-                speech.toggle()
-                if speech.listening { focused = false }
-            } label: {
-                Image(systemName: speech.listening ? "mic.fill" : "mic")
-                    .font(.system(size: 17, weight: .medium))
-                    .foregroundStyle(speech.listening ? .white : Theme.brand)
-                    .frame(width: 36, height: 36)
-                    .background(speech.listening ? Theme.danger : Theme.brandSoft)
-                    .clipShape(Circle())
-            }
-
             TextField("问编号或问题，比如：2002 库存", text: $input)
                 .focused($focused)
                 .submitLabel(.send)
@@ -162,7 +137,6 @@ struct ChatView: View {
     private func send() {
         let text = input
         input = ""
-        speech.stop()
         Task { await store.ask(text) }
     }
 
