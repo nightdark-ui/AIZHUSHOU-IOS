@@ -336,6 +336,7 @@ final class AppStore: ObservableObject {
             }
 
             var changed = 0
+            var changedNames: [String] = []
             for t in result.thresholds {
                 guard let sku = t["sku"] as? String else { continue }
                 let v = (t["min_qty"] as? NSNumber)?.doubleValue
@@ -343,6 +344,7 @@ final class AppStore: ObservableObject {
                     if products[idx].minQty != v {
                         products[idx].minQty = v
                         changed += 1
+                        changedNames.append("\(sku) → \(v.map { String(Int($0)) } ?? "默认")")
                     }
                 }
             }
@@ -352,8 +354,14 @@ final class AppStore: ObservableObject {
                                           threshold: settings.threshold,
                                           acks: Storage.loadAcks())
             Notifier.scheduleRestock(count: restock.count)
-            let msg = "同步成功：电脑共 \(result.acks.count) 条确认，"
-                + "新增 \(added) 条，提醒线改了 \(changed) 个"
+            var msg = "同步成功：电脑共 \(result.acks.count) 条确认，新增 \(added) 条"
+            if changed > 0 {
+                let shown = changedNames.prefix(5).joined(separator: "、")
+                let more = changedNames.count > 5 ? " 等 \(changedNames.count) 个" : ""
+                msg += "，提醒线改了 \(changed) 个：\(shown)\(more)"
+            } else {
+                msg += "，提醒线没有变化"
+            }
             lastAcksMessage = msg
             statusText = msg
             return msg
