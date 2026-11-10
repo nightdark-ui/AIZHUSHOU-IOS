@@ -56,9 +56,9 @@ final class AppStore: ObservableObject {
 
     private func welcomeText() -> String {
         if products.isEmpty {
-            return "你好，我是你的 AI 小助手。\n先去「设置」填 WPS 令牌，然后下拉同步。"
+            return "主人，我是你的 AI 小助手。\n先去「设置」填 WPS 令牌，然后下拉同步。"
         }
-        return "你好，我是你的 AI 小助手。\n可以这样问我：\n· 2002 库存\n· 2002 多少钱\n· 2002 有没有300\n· 有什么要补货的"
+        return "主人，我是你的 AI 小助手。\n可以这样问我：\n· 2002 库存\n· 2002 多少钱\n· 2002 有没有300\n· 有什么要补货的"
     }
 
     // MARK: - 设置
@@ -348,7 +348,7 @@ final class AppStore: ObservableObject {
         // 先走规则
         if let answer = Rules.answer(question, products: products,
                                      restock: restock, threshold: settings.threshold) {
-            chat.append(ChatLine(role: "assistant", text: answer, mode: "rule"))
+            chat.append(ChatLine(role: "assistant", text: greet(answer), mode: "rule"))
             return
         }
 
@@ -362,10 +362,10 @@ final class AppStore: ObservableObject {
                                                      key: settings.deepSeekKey,
                                                      context: context,
                                                      history: chat)
-            chat.append(ChatLine(role: "assistant", text: reply, mode: "llm"))
+            chat.append(ChatLine(role: "assistant", text: greet(reply), mode: "llm"))
         } catch {
             chat.append(ChatLine(role: "assistant",
-                                 text: "这个问题需要联网的 AI，但现在用不了：\(error.localizedDescription)",
+                                 text: "主人，这个问题需要联网的 AI，但现在用不了：\(error.localizedDescription)",
                                  mode: "rule"))
         }
     }
@@ -389,6 +389,14 @@ final class AppStore: ObservableObject {
             parts.append("（用户没提具体编号，也没有补货记录）")
         }
         return parts.joined(separator: "\n")
+    }
+
+    /// 统一称呼：回答开头叫「主人」
+    private func greet(_ text: String) -> String {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.isEmpty { return t }
+        if t.hasPrefix("主人") { return t }
+        return "主人，" + t
     }
 
     // MARK: - 工具
