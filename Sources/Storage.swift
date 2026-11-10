@@ -60,6 +60,19 @@ struct Storage {
         saveSnapshots(all)
     }
 
+    /// 从电脑补一份历史快照（只在本地没有更早数据时用）
+    static func importBaseline(day: String, values: [String: Double]) {
+        guard !values.isEmpty else { return }
+        var all = loadSnapshots()
+        if let exist = all[day], !exist.isEmpty { return }
+        all[day] = values
+        if all.count > 60 {
+            let sorted = all.keys.sorted()
+            for old in sorted.dropLast(60) { all.removeValue(forKey: old) }
+        }
+        saveSnapshots(all)
+    }
+
     /// 今天之前最近一天的快照
     static func previousSnapshot(before day: String) -> (date: String, values: [String: Double])? {
         let all = loadSnapshots()

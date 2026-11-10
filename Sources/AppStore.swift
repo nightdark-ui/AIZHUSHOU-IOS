@@ -182,6 +182,11 @@ final class AppStore: ObservableObject {
 
             Storage.recordSnapshot(result, day: today)
 
+            // 本地还没有历史快照 → 找电脑要一份，否则永远判不了"库存减少"
+            if Storage.previousSnapshot(before: today) == nil {
+                await importBaselineFromPC()
+            }
+
             restock = RestockEngine.build(products: result, day: today,
                                           threshold: settings.threshold,
                                           acks: Storage.loadAcks())
@@ -232,6 +237,21 @@ final class AppStore: ObservableObject {
         statusText = value == nil
             ? "\(sku) 已恢复默认提醒线"
             : "\(sku) 提醒线设为 \(Int(value!))"
+    }
+
+    /// 从电脑补一份基准快照
+    private func importBaselineFromPC() async {
+        let base = settings.pcBaseURL.trimmingCharacters(in: .whitespaces)
+        let key = settings.syncKey.trimmingCharacters(in: .whitespaces)
+        guard !base.isEmpty, !key.isEmpty else { return }
+        do {
+            if let b = try await SyncClient.baseline(base: base, key: key) {
+                Storage.importBaseline(day: b.day, values: b.values)
+                statusText += "（已补基准快照 \(b.day)）"
+            }
+        } catch {
+            // 电脑没开就等下一次
+        }
     }
 
     /// 重算补货清单（不重新拉表格）

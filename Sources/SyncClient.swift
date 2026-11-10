@@ -100,6 +100,35 @@ struct SyncClient {
         return rootObj["items"] as? [[String: Any]] ?? []
     }
 
+    /// 电脑端昨天（或最近一次）的快照，用来当补货判断的基准
+    static func baseline(base: String, key: String) async throws -> (day: String, values: [String: Double])? {
+        guard let root = normalize(base) else {
+            throw WPSError.badPayload("没填电脑地址")
+        }
+        guard let url = URL(string: root + "/inv/api/sync/snapshot") else {
+            throw WPSError.badPayload("电脑地址格式不对")
+        }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 25
+        req.setValue(key, forHTTPHeaderField: "X-Sync-Key")
+
+        let data = try await send(req, fallbackHTTP: root)
+        guard let rootObj = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw WPSError.badPayload("电脑返回的不是 JSON")
+        }
+        if let err = rootObj["error"] as? String, !err.isEmpty {
+            throw WPSError.badPayload(err)
+        }
+        guard let day = rootObj["date"] as? String, !day.isEmpty else { return nil }
+        let raw = rootObj["values"] as? [String: Any] ?? [:]
+        var values: [String: Double] = [:]
+        for (k, v) in raw {
+            if let n = v as? NSNumber { values[k] = n.doubleValue }
+            else if let d = v as? Double { values[k] = d }
+        }
+        return values.isEmpty ? nil : (day, values)
+    }
+
     /// 先按原样发；https 失败就换 http 再试一次（电脑端两种都听）
     private static func send(_ request: URLRequest, fallbackHTTP root: String) async throws -> Data {
         do {
