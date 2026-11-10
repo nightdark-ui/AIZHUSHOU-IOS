@@ -25,6 +25,7 @@ final class AppStore: ObservableObject {
 
     private var lastTurn: RuleTurn?
     private var lastSku: String?
+    private var lastCodes: [String] = []
     private let settingsKey = "aizhushou.settings.v1"
     private let lastSyncKey = "aizhushou.lastsync"
     private let lastPriceKey = "aizhushou.lastprice"
@@ -455,6 +456,18 @@ final class AppStore: ObservableObject {
 
         chat.append(ChatLine(role: "user", text: question, mode: ""))
 
+        // 只说「图片呢」→ 用上一轮问到的全部编号
+        let bareImage = Rules.extractCodes(question).isEmpty
+            && (question.contains("图片") || question.contains("照片")
+                || question.contains("长什么样"))
+        if bareImage, !lastCodes.isEmpty {
+            var line = ChatLine(role: "assistant", text: greet("这是刚才问的款："), mode: "rule")
+            line.images = imagesFor(question: question + " " + lastCodes.joined(separator: " "),
+                                    answer: "")
+            chat.append(line)
+            return
+        }
+
         // 上一轮问过某个编号，这轮只说「价格呢」「库存呢」→ 拼上上次的编号
         var effective = question
         let intentWords = ["价格", "多少钱", "库存", "还有多少", "剩多少", "有货",
@@ -468,9 +481,13 @@ final class AppStore: ObservableObject {
         let result = Rules.answer(effective, products: products,
                                   restock: restock, threshold: settings.threshold,
                                   turn: lastTurn)
-        if let code = Rules.extractCodes(effective).first,
+        let usedCodes = Rules.extractCodes(effective)
+        if let code = usedCodes.first,
            let hit = Rules.find(code, in: products) {
             lastSku = hit.sku
+        }
+        if !usedCodes.isEmpty {
+            lastCodes = usedCodes
         }
         lastTurn = result.turn
         if let answer = result.text {
@@ -548,30 +565,26 @@ final class AppStore: ObservableObject {
     }
 
     /// 什么时候配图，配几张：
-    ///   问了「图片」→ 每个编号各出一张（最多 6 个）
-    ///   没问图片   → 只给单个编号的预览图（最多 2 张）
+    ///   多编号 → 每个编号各一张（最多 6 个）
+    ///   单编号 → 问图片最多 4 张，否则 2 张
     private func imagesFor(question: String, answer: String) -> [String] {
         guard library.hasFolder else { return [] }
 
         let wantsImage = question.contains("图") || question.contains("照片")
             || question.contains("看看") || question.contains("长什么样")
-        let codes = Rules.extractCodes(question)
+        var codes = Rules.extractCodes(question)
+        if codes.isEmpty, wantsImage { codes = lastCodes }
         guard !codes.isEmpty else { return [] }
 
-        if codes.count > 1 {
-            guard wantsImage else { return [] }
-            var out: [String] = []
-            for c in codes.prefix(6) {
-                guard let p = Rules.find(c, in: products) else { continue }
-                if let first = library.images(for: p.sku, limit: 1).first {
-                    out.append(first)
-                }
+        var out: [String] = []
+        for c in codes.prefix(6) {
+            guard let p = Rules.find(c, in: products) else { continue }
+            let limit = codes.count == 1 ? (wantsImage ? 4 : 2) : 1
+            for path in library.images(for: p.sku, limit: limit) where !out.contains(path) {
+                out.append(path)
             }
-            return out
         }
-
-        guard let p = Rules.find(codes[0], in: products) else { return [] }
-        return library.images(for: p.sku, limit: wantsImage ? 4 : 2)
+        return out
     }
 
     /// 统一称呼：回答开头叫「主人」

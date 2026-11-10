@@ -124,17 +124,20 @@ enum Rules {
                 if let p = find(code, in: products) {
                     if !lines.isEmpty { lines.append("") }
                     let price = p.priceText?.isEmpty == false ? p.priceText! : "未填"
-                    let total = p.qty.map { Int($0) } ?? 0
-                    if p.qty == nil {
-                        lines.append("\(p.sku)　价格 \(price) · 数量算不出来")
-                        if let t = p.qtyText, !t.isEmpty {
-                            lines.append("　　（表格里写的是「\(t)」）")
+                    lines.append(p.sku)
+                    lines.append("价格 \(price)")
+                    if let q = p.qty {
+                        let raw = (p.qtyText ?? "").trimmingCharacters(in: .whitespaces)
+                        if !raw.isEmpty, Double(raw) == nil {
+                            lines.append("库存 \(Int(q)) 码")
+                            lines.append("（\(raw)）")
+                        } else {
+                            lines.append("库存 \(Int(q)) 码")
                         }
+                    } else if let t = p.qtyText, !t.isEmpty {
+                        lines.append("数量算不出来（表格写「\(t)」）")
                     } else {
-                        lines.append("\(p.sku)　价格 \(price) · 库存 \(total) 码")
-                        if let t = p.qtyText, !t.isEmpty, Double(t) == nil {
-                            lines.append("　　（\(t)）")
-                        }
+                        lines.append("数量未填")
                     }
                 } else {
                     missing.append(code)
