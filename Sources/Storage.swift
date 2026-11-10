@@ -102,4 +102,27 @@ struct Storage {
             try? data.write(to: url("acks.json"), options: .atomic)
         }
     }
+
+
+    // MARK: - 已推送的确认（判断有没有没送出去的）
+
+    static func loadPushed() -> Set<String> {
+        guard let data = try? Data(contentsOf: url("pushed.json")),
+              let list = try? JSONDecoder().decode([String].self, from: data) else { return [] }
+        return Set(list)
+    }
+
+    static func addPushed(_ keys: [String]) {
+        var set = loadPushed()
+        set.formUnion(keys)
+        if let data = try? JSONEncoder().encode(Array(set)) {
+            try? data.write(to: url("pushed.json"), options: .atomic)
+        }
+    }
+
+    static func pendingCount() -> Int {
+        let acks = loadAcks()
+        let pushed = loadPushed()
+        return acks.subtracting(pushed).count
+    }
 }

@@ -27,7 +27,19 @@ struct RootView: View {
         .tint(.blue)
         .task { store.launchSync() }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { store.autoSyncIfNeeded() }
+            if phase == .active {
+                store.autoSyncIfNeeded()
+                Task { _ = await store.syncAcks() }
+            }
+        }
+        .task {
+            // 前台时每 60 秒把没送出去的确认补推一次
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 60_000_000_000)
+                if scenePhase == .active && store.pendingAcks > 0 {
+                    _ = await store.syncAcks()
+                }
+            }
         }
     }
 }

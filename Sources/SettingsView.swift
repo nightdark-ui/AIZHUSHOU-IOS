@@ -71,7 +71,9 @@ struct SettingsView: View {
                         .font(.caption2)
                         .foregroundStyle(Theme.muted)
                 } label: {
-                    label("和电脑同步", detail: draft.syncKey.isEmpty ? "未配置" : "已配置")
+                    label("和电脑同步", detail: store.pendingAcks > 0
+                          ? "\(store.pendingAcks) 条待推送"
+                          : (draft.syncKey.isEmpty ? "未配置" : "已同步"))
                 }
 
                 // AI
