@@ -17,6 +17,7 @@ final class AppStore: ObservableObject {
     @Published var modelStatus = ""
     @Published var syncingAcks = false
     @Published var pendingAcks = 0
+    @Published var backupMessage = ""
     @Published var lastSyncFailed = false
     @Published var syncWarning = ""
     @Published var lastAcksMessage = ""
