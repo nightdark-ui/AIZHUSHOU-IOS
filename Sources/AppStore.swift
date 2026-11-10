@@ -108,7 +108,7 @@ final class AppStore: ObservableObject {
                 seen.insert(key)
 
                 let qtyText = pick(row, ["库存", "数量", "qty"])
-                let qty = parseNumber(qtyText)
+                let qty = normalizeQty(qtyText)
                 let p = priceMap[key]
                 result.append(Product(
                     sku: code,
@@ -159,6 +159,16 @@ final class AppStore: ObservableObject {
                     return String(format: "%g", d)
                 }
             }
+        }
+        return nil
+    }
+
+    /// 数量归一化：「没货」「无」算 0；算式算出来；其它返回 nil
+    private func normalizeQty(_ text: String?) -> Double? {
+        guard let raw = text?.trimmingCharacters(in: .whitespaces), !raw.isEmpty else { return nil }
+        if let v = parseNumber(raw) { return v }
+        if raw.contains("没货") || raw.contains("无货") || raw == "无" || raw == "空" {
+            return 0
         }
         return nil
     }

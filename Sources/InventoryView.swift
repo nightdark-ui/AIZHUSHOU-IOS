@@ -87,14 +87,22 @@ struct InventoryView: View {
     }
 
     private func qtyText(_ p: Product) -> String {
-        guard let q = p.qty else { return "—" }
-        return "\(Int(q))"
+        if let q = p.qty {
+            return q == 0 ? "没货" : "\(Int(q))"
+        }
+        if let t = p.qtyText, !t.isEmpty {
+            return t          // 算不出数字就原样显示表格里写的
+        }
+        return "—"
     }
 
     private func qtyColor(_ p: Product) -> Color {
-        guard let q = p.qty else { return .secondary }
-        if q <= 0 { return .red }
-        if q < store.settings.threshold { return .orange }
-        return .primary
+        if let q = p.qty {
+            if q <= 0 { return .red }
+            if q < store.settings.threshold { return .orange }
+            return .primary
+        }
+        if let t = p.qtyText, !t.isEmpty { return .orange }
+        return .secondary
     }
 }
