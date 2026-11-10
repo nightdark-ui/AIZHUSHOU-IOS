@@ -147,6 +147,27 @@ final class AppStore: ObservableObject {
                                       acks: Storage.loadAcks())
     }
 
+    /// 打开 App / 切回前台时，超过 10 分钟就自动同步一次
+    func autoSyncIfNeeded() {
+        guard !syncing else { return }
+        guard !settings.inventoryToken.isEmpty else { return }
+        if let last = lastSync, Date().timeIntervalSince(last) < 600 { return }
+        Task { await sync() }
+    }
+
+    /// 改单个款的提醒线（nil = 恢复默认）
+    func setMinQty(sku: String, value: Double?) {
+        guard let idx = products.firstIndex(where: { $0.sku == sku }) else { return }
+        products[idx].minQty = value
+        Storage.saveProducts(products)
+        restock = RestockEngine.build(products: products, day: today,
+                                      threshold: settings.threshold,
+                                      acks: Storage.loadAcks())
+        statusText = value == nil
+            ? "\(sku) 已恢复默认提醒线"
+            : "\(sku) 提醒线设为 \(Int(value!))"
+    }
+
     // MARK: - 补货确认
 
     func ack(_ item: RestockItem) {

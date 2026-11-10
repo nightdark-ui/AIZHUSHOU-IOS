@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RootView: View {
     @EnvironmentObject private var store: AppStore
+    @Environment(\.scenePhase) private var scenePhase
     @State private var tab = 0
 
     var body: some View {
@@ -24,5 +25,9 @@ struct RootView: View {
                 .tag(3)
         }
         .tint(.blue)
+        .task { store.autoSyncIfNeeded() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { store.autoSyncIfNeeded() }
+        }
     }
 }

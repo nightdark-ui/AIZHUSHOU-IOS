@@ -3,49 +3,42 @@ import SwiftUI
 struct InventoryView: View {
     @EnvironmentObject private var store: AppStore
     @State private var keyword = ""
+    @State private var editingSKU: String?
+    @State private var editingValue = ""
+    @State private var showEditor = false
 
     private var filtered: [Product] {
         let k = keyword.trimmingCharacters(in: .whitespaces)
         guard !k.isEmpty else { return store.products }
-        return store.products.filter {
-            $0.sku.localizedCaseInsensitiveContains(k)
-        }
+        return store.products.filter { $0.sku.localizedCaseInsensitiveContains(k) }
     }
 
     var body: some View {
         NavigationStack {
             List(filtered) { p in
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(p.sku)
-                            .font(.system(.body, design: .monospaced))
-                            .fontWeight(.semibold)
-                        if let t = p.qtyText, !t.isEmpty {
-                            Text(t)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                row(p)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button {
+                            editingSKU = p.sku
+                            editingValue = p.minQty.map { String(Int($0)) } ?? ""
+                            showEditor = true
+                        } label: {
+                            Label("提醒线", systemImage: "slider.horizontal.3")
+                        }
+                        .tint(.orange)
+
+                        if p.minQty != nil {
+                            Button(role: .destructive) {
+                                store.setMinQty(sku: p.sku, value: nil)
+                            } label: {
+                                Label("恢复默认", systemImage: "arrow.uturn.backward")
+                            }
                         }
                     }
-                    Spacer()
-                    VStack(alignment: .trailing, spacing: 3) {
-                        Text(qtyText(p))
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                            .foregroundStyle(qtyColor(p))
-                        if let price = p.priceText, !price.isEmpty {
-                            Text("¥\(price)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                .padding(.vertical, 2)
             }
             .listStyle(.plain)
             .searchable(text: $keyword, prompt: "搜编号")
-            .refreshable {
-                await store.sync()
-            }
+            .refreshable { await store.sync() }
             .navigationTitle("库存")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -83,23 +76,73 @@ struct InventoryView: View {
                     .padding(.vertical, 6)
                     .background(.bar)
             }
+            .alert("设置提醒线", isPresented: $showEditor) {
+                TextField("默认 \(Int(store.settings.threshold))", text: $editingValue)
+                    .keyboardType(.numberPad)
+                Button("保存") {
+                    let v = Double(editingValue.trimmingCharacters(in: .whitespaces))
+                    if let sku = editingSKU {
+                        store.setMinQty(sku: sku, value: v)
+                    }
+                }
+                Button("取消", role: .cancel) {}
+            } message: {
+                Text("低于这个数量就算「需要补货」。留空则用默认 \(Int(store.settings.threshold))。")
+            }
         }
+    }
+
+    private func row(_ p: Product) -> some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(p.sku)
+                        .font(.system(.body, design: .monospaced))
+                        .fontWeight(.semibold)
+                    if let m = p.minQty {
+                        Text("线\(Int(m))")
+                            .font(.caption2)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Color.orange.opacity(0.15))
+                            .foregroundStyle(.orange)
+                            .clipShape(Capsule())
+                    }
+                }
+                if let t = p.qtyText, !t.isEmpty {
+                    Text(t)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 3) {
+                Text(qtyText(p))
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundStyle(qtyColor(p))
+                if let price = p.priceText, !price.isEmpty {
+                    Text("¥\(price)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(.vertical, 2)
     }
 
     private func qtyText(_ p: Product) -> String {
         if let q = p.qty {
             return q == 0 ? "没货" : "\(Int(q))"
         }
-        if let t = p.qtyText, !t.isEmpty {
-            return t          // 算不出数字就原样显示表格里写的
-        }
+        if let t = p.qtyText, !t.isEmpty { return t }
         return "—"
     }
 
     private func qtyColor(_ p: Product) -> Color {
         if let q = p.qty {
             if q <= 0 { return .red }
-            if q < store.settings.threshold { return .orange }
+            if q < (p.minQty ?? store.settings.threshold) { return .orange }
             return .primary
         }
         if let t = p.qtyText, !t.isEmpty { return .orange }
