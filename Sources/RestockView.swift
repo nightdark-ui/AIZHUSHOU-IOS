@@ -190,7 +190,7 @@ struct RestockView: View {
                     .padding(.top, 2)
             }
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text(item.sku)
                         .font(.system(.body, design: .monospaced))
@@ -200,9 +200,17 @@ struct RestockView: View {
                         .font(.caption2)
                         .foregroundStyle(item.level == "danger" ? Theme.danger : Theme.warn)
                 }
-                HStack {
-                    Spacer()
-                    if !selecting {
+
+                // 详细情况：原来多少 → 现在多少
+                Text(item.reason)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                if !selecting {
+                    HStack {
+                        Spacer()
                         Button {
                             store.ack(item)
                         } label: {
@@ -216,12 +224,11 @@ struct RestockView: View {
                                 .overlay(Capsule().stroke(Theme.ok.opacity(0.35), lineWidth: 1))
                         }
                         .buttonStyle(.plain)
-                        .padding(.leading, 6)
                     }
                 }
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 4)
         .swipeActions(edge: .trailing) {
             Button {
                 store.ack(item)
