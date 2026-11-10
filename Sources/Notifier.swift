@@ -1,48 +1,55 @@
 import Foundation
 import UserNotifications
 
-/// 本地通知：有补货就每天 9 点提醒一次
+/// 前台也显示横幅
+final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                               willPresent notification: UNNotification,
+                               withCompletionHandler completionHandler:
+                               @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .sound, .list])
+    }
+}
+
 enum Notifier {
 
-    static let restockID = "aizhushou.restock.daily"
+    static let delegate = NotificationDelegate()
 
     static func requestPermission() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
+        UNUserNotificationCenter.current().delegate = delegate
+        UNUserNotificationCenter.current()
+            .requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
     }
 
-    /// 安排明天 9 点（如果现在还没到 9 点就今天）
-    static func scheduleRestock(count: Int) {
-        guard count > 0 else {
-            cancelRestock()
-            return
-        }
-        let center = UNUserNotificationCenter.current()
-        center.removePendingNotificationRequests(withIdentifiers: [restockID])
+    /// 每次刷新库存发现补货就提醒（5 分钟内不重复弹）
+    static func notifyRestockIfNeeded(count: Int) {
+        guard count > 0 else { return }
+
+        let key = "aizhushou.lastNotify"
+        let now = Date().timeIntervalSince1970
+        let last = UserDefaults.standard.double(forKey: key)
+        if last > 0, now - last < 300 { return }
+        UserDefaults.standard.set(now, forKey: key)
 
         let content = UNMutableNotificationContent()
         content.title = "有 \(count) 个款需要补货"
         content.body = "打开 AI小助手看看补货清单。"
         content.sound = .default
 
-        var comps = Calendar.current.dateComponents([.year, .month, .day], from: Date())
-        comps.hour = 9
-        comps.minute = 0
-        var fire = Calendar.current.date(from: comps) ?? Date()
-        if fire <= Date() {
-            fire = Calendar.current.date(byAdding: .day, value: 1, to: fire) ?? fire
-            comps = Calendar.current.dateComponents([.year, .month, .day], from: fire)
-            comps.hour = 9
-            comps.minute = 0
-        }
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        UNUserNotificationCenter.current()
+            .add(UNNotificationRequest(identifier: "aizhushou.restock.now",
+                                       content: content, trigger: trigger))
+    }
 
-        let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
-        let request = UNNotificationRequest(identifier: restockID, content: content, trigger: trigger)
-        center.add(request) { _ in }
+    /// 兼容旧调用点
+    static func scheduleRestock(count: Int) {
+        notifyRestockIfNeeded(count: count)
     }
 
     static func cancelRestock() {
         UNUserNotificationCenter.current()
-            .removePendingNotificationRequests(withIdentifiers: [restockID])
+            .removePendingNotificationRequests(withIdentifiers: ["aizhushou.restock.now"])
     }
 
     /// 测试用：5 秒后弹一条
@@ -53,6 +60,7 @@ enum Notifier {
         content.sound = .default
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 5, repeats: false)
         UNUserNotificationCenter.current()
-            .add(UNNotificationRequest(identifier: "aizhushou.test", content: content, trigger: trigger))
+            .add(UNNotificationRequest(identifier: "aizhushou.test",
+                                       content: content, trigger: trigger))
     }
 }

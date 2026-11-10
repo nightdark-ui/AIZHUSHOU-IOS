@@ -64,7 +64,7 @@ struct SettingsView: View {
                 } header: {
                     Text("补货提醒")
                 } footer: {
-                    Text("有补货时，每天 9 点提醒一次。可在系统设置里关闭。")
+                    Text("每次刷新库存发现补货就提醒一次（5 分钟内不重复）。可在系统设置里关闭。")
                 }
 
                 Section("AI 对话") {
