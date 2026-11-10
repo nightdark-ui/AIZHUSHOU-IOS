@@ -79,7 +79,16 @@ enum Rules {
             return "表格里没填数量"
         }
         if q <= 0 { return "目前没货" }
-        return "还有 \(Int(q)) 码"
+        return "还有 " + amount(p, total: q) + " 码"
+    }
+
+    /// 有算式就带上明细：96+103+95+117+166 = 577
+    static func amount(_ p: Product, total: Double) -> String {
+        let raw = (p.qtyText ?? "").trimmingCharacters(in: .whitespaces)
+        guard !raw.isEmpty, Double(raw) == nil else {
+            return "\(Int(total))"
+        }
+        return "\(raw) = \(Int(total))"
     }
 
     static func detailLine(_ item: RestockItem) -> String {
@@ -90,9 +99,10 @@ enum Rules {
     static func restockAdvice(_ p: Product, threshold: Double) -> String {
         guard let q = p.qty else { return "\(p.sku) 的数量算不出来，请按表格判断。" }
         let limit = p.minQty ?? threshold
+        let detail = amount(p, total: q)
         if q <= 0 { return "\(p.sku) 没货了，需要补。" }
-        if q < limit { return "\(p.sku) 还有 \(Int(q)) 码，低于提醒线 \(Int(limit))，建议补。" }
-        return "\(p.sku) 还有 \(Int(q)) 码，高于提醒线 \(Int(limit))，暂时不用补。"
+        if q < limit { return "\(p.sku) 还有 \(detail) 码，低于提醒线 \(Int(limit))，建议补。" }
+        return "\(p.sku) 还有 \(detail) 码，高于提醒线 \(Int(limit))，暂时不用补。"
     }
 
     static func thresholdAnswer(_ p: Product, need: Double) -> String {
@@ -100,9 +110,10 @@ enum Rules {
             return "\(p.sku) 的数量写的是「\(p.qtyText ?? "")」，算不出来，判断不了够不够 \(Int(need))。"
         }
         let n = Int(need)
+        let detail = amount(p, total: q)
         if q <= 0 { return "\(p.sku) 没货，不够 \(n) 码。" }
-        if q >= need { return "\(p.sku) 还有 \(Int(q)) 码，够 \(n)。" }
-        return "\(p.sku) 只剩 \(Int(q)) 码，不够 \(n)（差 \(Int(need - q)) 码）。"
+        if q >= need { return "\(p.sku) 还有 \(detail) 码，够 \(n)。" }
+        return "\(p.sku) 只剩 \(detail) 码，不够 \(n)（差 \(Int(need - q)) 码）。"
     }
 
     // MARK: - 文本处理

@@ -376,7 +376,7 @@ final class AppStore: ObservableObject {
         let codes = Rules.extractCodes(question)
         for code in codes.prefix(8) {
             if let p = Rules.find(code, in: products) {
-                parts.append("\(p.sku)  价 \(p.priceText ?? "未填")  库存 \(p.qty.map { String(Int($0)) } ?? "未知")")
+                parts.append("\(p.sku)  价 \(p.priceText ?? "未填")  库存 \(p.qtyText ?? p.qty.map { String(Int($0)) } ?? "未知")")
             }
         }
         if !restock.isEmpty {
