@@ -201,6 +201,13 @@ final class AppStore: ObservableObject {
             : "\(sku) 提醒线设为 \(Int(value!))"
     }
 
+    /// 重算补货清单（不重新拉表格）
+    func refreshRestock() async {
+        restock = RestockEngine.build(products: products, day: today,
+                                      threshold: settings.threshold,
+                                      acks: Storage.loadAcks())
+    }
+
     // MARK: - 补货确认
 
     func ack(_ item: RestockItem) {
