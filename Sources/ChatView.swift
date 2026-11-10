@@ -8,7 +8,7 @@ struct ChatView: View {
     @State private var showModelInfo = false
     @State private var previewPaths: [String] = []
     @State private var previewIndex = 0
-    @State private var showPreview = false
+    @State private var previewState: PreviewState?
     @State private var saveHint = ""
     @FocusState private var focused: Bool
 
@@ -78,8 +78,8 @@ struct ChatView: View {
             .onChange(of: speech.text) { _, newValue in
                 if !newValue.isEmpty { input = newValue }
             }
-            .sheet(isPresented: $showPreview) {
-                viewer
+            .sheet(item: $previewState) { state in
+                viewer(state)
             }
             .alert("模型状态", isPresented: $showModelInfo) {
                 Button("测试连接") { Task { await store.testModel() } }
@@ -210,7 +210,7 @@ struct ChatView: View {
                             Button {
                                 previewPaths = line.images
                                 previewIndex = idx
-                                showPreview = true
+                                previewState = PreviewState(paths: line.images, index: idx)
                             } label: {
                                 thumb(path)
                             }
@@ -246,20 +246,20 @@ struct ChatView: View {
             .stroke(Theme.line, lineWidth: 1))
     }
 
-    private var viewer: some View {
+    private func viewer(_ state: PreviewState) -> some View {
         ZStack(alignment: .topTrailing) {
-            Theme.bg.ignoresSafeArea()
+            Color.clear
 
             TabView(selection: $previewIndex) {
-                ForEach(Array(previewPaths.enumerated()), id: \.offset) { idx, path in
+                ForEach(Array(state.paths.enumerated()), id: \.offset) { idx, path in
                     page(path).tag(idx)
                 }
             }
-            .tabViewStyle(.page(indexDisplayMode: previewPaths.count > 1 ? .always : .never))
+            .tabViewStyle(.page(indexDisplayMode: state.paths.count > 1 ? .always : .never))
             .indexViewStyle(.page(backgroundDisplayMode: .interactive))
 
             Button {
-                showPreview = false
+                previewState = nil
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 13, weight: .bold))
@@ -272,7 +272,7 @@ struct ChatView: View {
             .padding(.trailing, 16)
             .padding(.top, 16)
         }
-        .presentationBackground(Theme.bg)
+        .presentationBackground(.clear)
         .overlay(alignment: .bottom) {
             if !saveHint.isEmpty {
                 Text(saveHint)
@@ -293,9 +293,10 @@ struct ChatView: View {
                 Image(uiImage: img)
                     .resizable()
                     .scaledToFit()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 60)
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .shadow(color: Color.black.opacity(0.18), radius: 16, y: 6)
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 70)
                     .contextMenu {
                         Button {
                             saveToAlbum(path)
@@ -308,8 +309,10 @@ struct ChatView: View {
                         }
                     }
             } else {
-                Text("图片打不开")
-                    .foregroundStyle(Theme.muted)
+                VStack(spacing: 8) {
+                    ProgressView()
+                    Text("正在打开…").font(.caption).foregroundStyle(Theme.muted)
+                }
             }
         }
     }
@@ -336,3 +339,8 @@ struct ChatView: View {
     }
 }
 
+struct PreviewState: Identifiable {
+    let id = UUID()
+    var paths: [String]
+    var index: Int
+}

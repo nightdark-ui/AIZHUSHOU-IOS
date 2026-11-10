@@ -122,9 +122,6 @@ struct RestockView: View {
                     ForEach(store.restock) { item in
                         row(item)
                     }
-                } footer: {
-                    Text("规则：库存比上次减少，且低于提醒线 \(Int(store.settings.threshold))。点右上角问号看详细规则。")
-                        .foregroundStyle(Theme.muted)
                 }
             }
             .listStyle(.plain)
@@ -158,6 +155,22 @@ struct RestockView: View {
                     .fontWeight(.medium)
                     .foregroundStyle((item.qty ?? 0) <= 0 ? Theme.danger : Theme.text)
             }
+            Button {
+                store.ack(item)
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark.circle.fill")
+                    Text("已补货")
+                }
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Theme.ok)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Theme.okSoft)
+                .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 3)
             Text(item.reason)
                 .font(.caption2)
                 .foregroundStyle(Theme.muted)
