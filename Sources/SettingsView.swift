@@ -10,6 +10,8 @@ struct SettingsView: View {
     @State private var openSync = false
     @State private var openAI = false
     @State private var showFolderPicker = false
+    @State private var showTestAlert = false
+    @State private var rebuildNote = ""
 
     var body: some View {
         NavigationStack {
@@ -114,11 +116,30 @@ struct SettingsView: View {
                     }
                     if store.library.hasFolder {
                         Button {
-                            Task { await store.library.rebuild() }
+                            rebuildNote = "正在重建索引…"
+                            Task {
+                                await store.library.rebuild()
+                                rebuildNote = store.library.errorText.isEmpty
+                                    ? "索引完成：\(store.library.fileCount) 张图\(store.library.mapped ? "（已读映射）" : "")"
+                                    : store.library.errorText
+                            }
                         } label: {
-                            Text(store.library.building ? "正在建索引…" : "重建索引（\(store.library.fileCount) 张图\(store.library.mapped ? " · 已读映射" : "")）")
+                            HStack {
+                                Text("重建索引（\(store.library.fileCount) 张图\(store.library.mapped ? " · 已读映射" : "")）")
+                                if store.library.building {
+                                    Spacer()
+                                    ProgressView().scaleEffect(0.8)
+                                }
+                            }
                         }
                         .disabled(store.library.building)
+
+                        if !rebuildNote.isEmpty {
+                            Text(rebuildNote)
+                                .font(.caption)
+                                .foregroundStyle(rebuildNote.hasPrefix("索引完成") ? Theme.ok : Theme.muted)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                     if !store.library.errorText.isEmpty {
                         Text(store.library.errorText)
@@ -143,6 +164,7 @@ struct SettingsView: View {
                     Button {
                         Notifier.requestPermission()
                         Notifier.test()
+                        showTestAlert = true
                     } label: {
                         Text("测试通知（5 秒后）")
                     }
@@ -154,12 +176,6 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Button {
-                        store.settings = draft
-                        store.saveSettings()
-                    } label: {
-                        Text("保存").frame(maxWidth: .infinity)
-                    }
                     Button {
                         store.settings = draft
                         Task { await store.saveAndSync() }
@@ -181,6 +197,11 @@ struct SettingsView: View {
                 if case .success(let urls) = result, let url = urls.first {
                     store.library.setFolder(url)
                 }
+            }
+            .alert("通知已发送", isPresented: $showTestAlert) {
+                Button("好", role: .cancel) {}
+            } message: {
+                Text("请等 5 秒。如果 5 秒后没看到通知，说明系统通知权限被关掉了，去「设置 → 通知 → AI小助手」打开。")
             }
             .onAppear { draft = store.settings }
         }
