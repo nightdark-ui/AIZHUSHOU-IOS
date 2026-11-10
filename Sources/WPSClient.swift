@@ -30,7 +30,7 @@ struct WPSClient {
             throw WPSError.notConfigured
         }
 
-        guard let url = URL(string: "https://www.kdocs.cn/api/v3/ide/file/\(fileId)/script/\(scriptId)") else {
+        guard let url = URL(string: "https://www.kdocs.cn/api/v3/ide/file/\(fileId)/script/\(scriptId)/sync_task") else {
             throw WPSError.badPayload("地址拼不出来")
         }
 
