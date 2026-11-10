@@ -6,25 +6,36 @@ final class AppStore: ObservableObject {
 
     @Published var settings: AppSettings = AppSettings()
     @Published var products: [Product] = []
+    @Published var restock: [RestockItem] = []
+    @Published var chat: [ChatLine] = []
     @Published var syncing = false
+    @Published var thinking = false
     @Published var statusText = "还没同步"
     @Published var lastSync: Date?
 
     private let settingsKey = "aizhushou.settings.v1"
-
-    private var documents: URL {
-        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-    }
-    private var productsURL: URL {
-        documents.appendingPathComponent("products.json")
-    }
+    private let lastSyncKey = "aizhushou.lastsync"
 
     init() {
         loadSettings()
-        loadProducts()
+        products = Storage.loadProducts()
         if !products.isEmpty {
-            statusText = "本地有 \(products.count) 个款（\(lastSyncText)）"
+            statusText = "本地有 \(products.count) 个款"
         }
+        if let t = UserDefaults.standard.object(forKey: lastSyncKey) as? Date {
+            lastSync = t
+        }
+        restock = RestockEngine.build(products: products, day: today, threshold: settings.threshold,
+                                      acks: Storage.loadAcks())
+        chat = [ChatLine(role: "assistant",
+                         text: welcomeText(),
+                         mode: "rule")]
+    }
+
+    var today: String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f.string(from: Date())
     }
 
     var lastSyncText: String {
@@ -32,6 +43,13 @@ final class AppStore: ObservableObject {
         let f = DateFormatter()
         f.dateFormat = "MM-dd HH:mm"
         return f.string(from: d)
+    }
+
+    private func welcomeText() -> String {
+        if products.isEmpty {
+            return "你好，我是你的 AI 小助手。\n先去「设置」填 WPS 令牌，然后下拉同步。"
+        }
+        return "你好，我是你的 AI 小助手。\n可以这样问我：\n· 2002 库存\n· 2002 多少钱\n· 2002 有没有300\n· 有什么要补货的"
     }
 
     // MARK: - 设置
@@ -49,30 +67,14 @@ final class AppStore: ObservableObject {
         statusText = "设置已保存"
     }
 
-    // MARK: - 本地库存
-
-    func loadProducts() {
-        guard let data = try? Data(contentsOf: productsURL),
-              let list = try? JSONDecoder().decode([Product].self, from: data) else { return }
-        products = list
-    }
-
-    func saveProducts() {
-        if let data = try? JSONEncoder().encode(products) {
-            try? data.write(to: productsURL, options: .atomic)
-        }
-    }
-
     // MARK: - 同步
 
     func sync() async {
         guard !syncing else { return }
         syncing = true
-        statusText = "正在同步…"
         defer { syncing = false }
 
         do {
-            // 库存表：让脚本把「数量」原文传回来（sum=0 不预先求和）
             statusText = "正在拉库存表…"
             let stockRows = try await WPSClient.pullAll(
                 token: settings.inventoryToken,
@@ -82,7 +84,6 @@ final class AppStore: ObservableObject {
                        "gap": "4", "dropEmpty": "1", "money": "0"]
             )
 
-            // 价格表：没填价的款也要保留
             statusText = "正在拉价格表…"
             let priceRows = try await WPSClient.pullAll(
                 token: settings.priceToken.isEmpty ? settings.inventoryToken : settings.priceToken,
@@ -110,38 +111,102 @@ final class AppStore: ObservableObject {
                 let qtyText = pick(row, ["库存", "数量", "qty"])
                 let qty = normalizeQty(qtyText)
                 let p = priceMap[key]
-                result.append(Product(
-                    sku: code,
-                    name: nil,
-                    priceText: p?.0,
-                    price: p?.1,
-                    qty: qty,
-                    qtyText: qtyText,
-                    minQty: nil
-                ))
+                result.append(Product(sku: code, name: nil,
+                                      priceText: p?.0, price: p?.1,
+                                      qty: qty, qtyText: qtyText, minQty: nil))
             }
-
-            // 价格表里有、库存表里没有的款也带上（方便查价）
             for (key, value) in priceMap where !seen.contains(key) {
-                result.append(Product(
-                    sku: key,
-                    name: nil,
-                    priceText: value.0,
-                    price: value.1,
-                    qty: nil,
-                    qtyText: nil,
-                    minQty: nil
-                ))
+                result.append(Product(sku: key, name: nil,
+                                      priceText: value.0, price: value.1,
+                                      qty: nil, qtyText: nil, minQty: nil))
             }
 
             result.sort { $0.sku.localizedStandardCompare($1.sku) == .orderedAscending }
             products = result
+            Storage.saveProducts(result)
+
+            // 记今天的快照（同一天覆盖）
+            Storage.recordSnapshot(result, day: today)
+
+            restock = RestockEngine.build(products: result, day: today,
+                                          threshold: settings.threshold,
+                                          acks: Storage.loadAcks())
+
             lastSync = Date()
-            saveProducts()
-            statusText = "同步成功：\(result.count) 个款（\(lastSyncText)）"
+            UserDefaults.standard.set(lastSync, forKey: lastSyncKey)
+            statusText = "同步成功：\(result.count) 个款，补货 \(restock.count) 个（\(lastSyncText)）"
         } catch {
             statusText = "同步失败：\(error.localizedDescription)"
         }
+    }
+
+    /// 重新算一遍补货清单（不重新同步表格）
+    func refreshRestock() async {
+        restock = RestockEngine.build(products: products, day: today,
+                                      threshold: settings.threshold,
+                                      acks: Storage.loadAcks())
+    }
+
+    // MARK: - 补货确认
+
+    func ack(_ item: RestockItem) {
+        let key = Storage.ackKey(sku: item.sku, prevDate: item.prevDate, qty: item.qty)
+        Storage.addAck(key)
+        restock.removeAll { $0.sku == item.sku }
+    }
+
+    // MARK: - 对话
+
+    func ask(_ text: String) async {
+        let question = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !question.isEmpty else { return }
+
+        chat.append(ChatLine(role: "user", text: question, mode: ""))
+
+        // 先走规则
+        if let answer = Rules.answer(question, products: products,
+                                     restock: restock, threshold: settings.threshold) {
+            chat.append(ChatLine(role: "assistant", text: answer, mode: "rule"))
+            return
+        }
+
+        // 规则答不了 → AI
+        thinking = true
+        defer { thinking = false }
+
+        let context = buildContext(for: question)
+        do {
+            let reply = try await DeepSeekClient.ask(question: question,
+                                                     key: settings.deepSeekKey,
+                                                     context: context,
+                                                     history: chat)
+            chat.append(ChatLine(role: "assistant", text: reply, mode: "llm"))
+        } catch {
+            chat.append(ChatLine(role: "assistant",
+                                 text: "这个问题需要联网的 AI，但现在用不了：\(error.localizedDescription)",
+                                 mode: "rule"))
+        }
+    }
+
+    /// 给 AI 的上下文：只带消息里提到的编号 + 补货清单
+    private func buildContext(for question: String) -> String {
+        var parts: [String] = []
+        let codes = Rules.extractCodes(question)
+        for code in codes.prefix(8) {
+            if let p = Rules.find(code, in: products) {
+                parts.append("\(p.sku)  价 \(p.priceText ?? "未填")  库存 \(p.qty.map { String(Int($0)) } ?? "未知")")
+            }
+        }
+        if !restock.isEmpty {
+            parts.append("【补货清单】")
+            for item in restock.prefix(15) {
+                parts.append("\(item.sku)  少了 \(Int(abs(item.change)))  剩 \(Int(item.qty ?? 0))")
+            }
+        }
+        if parts.isEmpty {
+            parts.append("（用户没提具体编号，也没有补货记录）")
+        }
+        return parts.joined(separator: "\n")
     }
 
     // MARK: - 工具
@@ -155,25 +220,11 @@ final class AppStore: ObservableObject {
                 if let n = v as? NSNumber {
                     return n.stringValue
                 }
-                if let d = v as? Double {
-                    return String(format: "%g", d)
-                }
             }
         }
         return nil
     }
 
-    /// 数量归一化：「没货」「无」算 0；算式算出来；其它返回 nil
-    private func normalizeQty(_ text: String?) -> Double? {
-        guard let raw = text?.trimmingCharacters(in: .whitespaces), !raw.isEmpty else { return nil }
-        if let v = parseNumber(raw) { return v }
-        if raw.contains("没货") || raw.contains("无货") || raw == "无" || raw == "空" {
-            return 0
-        }
-        return nil
-    }
-
-    /// 只处理纯数字和简单算式，其它返回 nil
     private func parseNumber(_ text: String?) -> Double? {
         guard let raw = text?.trimmingCharacters(in: .whitespaces), !raw.isEmpty else { return nil }
         var s = raw
@@ -198,6 +249,13 @@ final class AppStore: ObservableObject {
             }
             return total
         }
+        return nil
+    }
+
+    private func normalizeQty(_ text: String?) -> Double? {
+        guard let raw = text?.trimmingCharacters(in: .whitespaces), !raw.isEmpty else { return nil }
+        if let v = parseNumber(raw) { return v }
+        if raw.contains("没货") || raw.contains("无货") { return 0 }
         return nil
     }
 }
