@@ -11,6 +11,9 @@ final class AppStore: ObservableObject {
     @Published var syncing = false
     @Published var thinking = false
     @Published var statusText = "还没同步"
+    @Published var history: [HistoryItem] = []
+    @Published var historyLoading = false
+    @Published var modelStatus = ""
     @Published var lastSync: Date?
     @Published var lastPriceSync: Date?
 
@@ -220,6 +223,47 @@ final class AppStore: ObservableObject {
         restock.removeAll { $0.sku == item.sku }
         Notifier.scheduleRestock(count: restock.count)
         Task { await syncAcks() }
+    }
+
+    // MARK: - 补货历史
+
+    func loadHistory() async {
+        let base = settings.pcBaseURL.trimmingCharacters(in: .whitespaces)
+        let key = settings.syncKey.trimmingCharacters(in: .whitespaces)
+        guard !base.isEmpty, !key.isEmpty else { return }
+
+        historyLoading = true
+        defer { historyLoading = false }
+        do {
+            let rows = try await SyncClient.history(base: base, key: key)
+            history = rows.compactMap { HistoryItem(row: $0) }
+        } catch {
+            statusText = "拉历史失败：\(error.localizedDescription)"
+        }
+    }
+
+    // MARK: - 模型状态
+
+    func testModel() async {
+        guard !settings.deepSeekKey.trimmingCharacters(in: .whitespaces).isEmpty else {
+            modelStatus = "未配置"
+            return
+        }
+        modelStatus = "检测中…"
+        let t0 = Date()
+        do {
+            _ = try await DeepSeekClient.ask(question: "只回复两个字母：ok",
+                                             key: settings.deepSeekKey,
+                                             context: "", history: [])
+            let ms = Int(Date().timeIntervalSince(t0) * 1000)
+            modelStatus = "在线 \(ms)ms"
+        } catch {
+            modelStatus = "连不上"
+        }
+    }
+
+    var modelConfigured: Bool {
+        !settings.deepSeekKey.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
     // MARK: - 和电脑双向同步

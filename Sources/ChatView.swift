@@ -3,7 +3,9 @@ import UIKit
 
 struct ChatView: View {
     @EnvironmentObject private var store: AppStore
+    @StateObject private var speech = SpeechListener()
     @State private var input = ""
+    @State private var showModelInfo = false
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -33,22 +35,81 @@ struct ChatView: View {
                     }
                 }
 
+                if !speech.errorText.isEmpty {
+                    Text(speech.errorText)
+                        .font(.caption2)
+                        .foregroundStyle(Theme.danger)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 14)
+                        .padding(.bottom, 4)
+                }
+
                 composer
             }
             .navigationTitle("AI 小助手")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    modelPill
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Text(store.syncing ? "同步中…" : store.lastSyncText)
                         .font(.caption2)
                         .foregroundStyle(Theme.muted)
                 }
             }
+            .onChange(of: speech.text) { _, newValue in
+                if !newValue.isEmpty { input = newValue }
+            }
+            .alert("模型状态", isPresented: $showModelInfo) {
+                Button("测试连接") { Task { await store.testModel() } }
+                Button("好", role: .cancel) {}
+            } message: {
+                Text(modelDescription)
+            }
+        }
+    }
+
+    private var modelDescription: String {
+        if !store.modelConfigured { return "还没填 DeepSeek API Key，复杂问题会用本地的规则回答。" }
+        if store.modelStatus.isEmpty { return "已配置 DeepSeek。点「测试连接」看看能不能通。" }
+        return store.modelStatus
+    }
+
+    private var modelPill: some View {
+        Button {
+            showModelInfo = true
+        } label: {
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(store.modelConfigured ? Theme.ok : Theme.muted)
+                    .frame(width: 7, height: 7)
+                Text(store.modelConfigured ? "DeepSeek" : "未配置")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Theme.muted)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Theme.panel)
+            .clipShape(Capsule())
+            .overlay(Capsule().stroke(Theme.line, lineWidth: 1))
         }
     }
 
     private var composer: some View {
         HStack(spacing: 8) {
+            Button {
+                speech.toggle()
+                if speech.listening { focused = false }
+            } label: {
+                Image(systemName: speech.listening ? "mic.fill" : "mic")
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundStyle(speech.listening ? .white : Theme.brand)
+                    .frame(width: 36, height: 36)
+                    .background(speech.listening ? Theme.danger : Theme.brandSoft)
+                    .clipShape(Circle())
+            }
+
             TextField("问编号或问题，比如：2002 库存", text: $input)
                 .focused($focused)
                 .submitLabel(.send)
@@ -81,14 +142,20 @@ struct ChatView: View {
     private func send() {
         let text = input
         input = ""
+        speech.stop()
         Task { await store.ask(text) }
     }
 
     @ViewBuilder
     private func bubble(_ line: ChatLine) -> some View {
         let isUser = line.role == "user"
-        HStack(alignment: .bottom) {
+        HStack(alignment: .top, spacing: 8) {
             if isUser { Spacer(minLength: 44) }
+
+            if !isUser {
+                avatar
+            }
+
             VStack(alignment: isUser ? .trailing : .leading, spacing: 3) {
                 Text(line.text)
                     .font(.system(size: 15))
@@ -108,7 +175,17 @@ struct ChatView: View {
                         .padding(.leading, 3)
                 }
             }
-            if !isUser { Spacer(minLength: 44) }
+
+            if isUser { Spacer(minLength: 0) } else { Spacer(minLength: 44) }
         }
+    }
+
+    private var avatar: some View {
+        Image("LaunchLogo")
+            .resizable()
+            .scaledToFill()
+            .frame(width: 30, height: 30)
+            .clipShape(Circle())
+            .overlay(Circle().stroke(Theme.line, lineWidth: 1))
     }
 }

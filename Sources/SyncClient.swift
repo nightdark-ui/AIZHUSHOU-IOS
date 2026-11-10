@@ -57,6 +57,28 @@ struct SyncClient {
         return try decode(data)
     }
 
+    static func history(base: String, key: String, days: Int = 30) async throws -> [[String: Any]] {
+        guard let root = normalize(base) else {
+            throw WPSError.badPayload("没填电脑地址")
+        }
+        guard let url = URL(string: root + "/inv/api/sync/history?days=\(days)") else {
+            throw WPSError.badPayload("电脑地址格式不对")
+        }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 25
+        req.setValue(key, forHTTPHeaderField: "X-Sync-Key")
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        try check(resp, data)
+        guard let rootObj = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw WPSError.badPayload("电脑返回的不是 JSON")
+        }
+        if let err = rootObj["error"] as? String, !err.isEmpty {
+            throw WPSError.badPayload(err)
+        }
+        return rootObj["items"] as? [[String: Any]] ?? []
+    }
+
     private static func check(_ resp: URLResponse, _ data: Data) throws {
         guard let http = resp as? HTTPURLResponse else { return }
         if http.statusCode == 403 {

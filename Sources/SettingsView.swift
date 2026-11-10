@@ -3,30 +3,38 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject private var store: AppStore
     @State private var draft = AppSettings()
-    @State private var syncResult = ""
+
+    @State private var openInventory = false
+    @State private var openPrice = false
+    @State private var openSync = false
+    @State private var openAI = false
 
     var body: some View {
         NavigationStack {
             Form {
-                Section {
+                // 库存表
+                DisclosureGroup(isExpanded: $openInventory) {
                     SecureField("AirScript 令牌", text: $draft.inventoryToken)
                     TextField("文件 ID", text: $draft.inventoryFileId)
                     TextField("脚本 ID", text: $draft.inventoryScriptId)
-                } header: {
-                    Text("库存表")
+                } label: {
+                    label("库存表", detail: draft.inventoryToken.isEmpty ? "未填令牌" : "已填")
                 }
 
-                Section {
+                // 价格表
+                DisclosureGroup(isExpanded: $openPrice) {
                     SecureField("AirScript 令牌", text: $draft.priceToken)
                     TextField("文件 ID", text: $draft.priceFileId)
                     TextField("脚本 ID", text: $draft.priceScriptId)
-                } header: {
-                    Text("价格表")
-                } footer: {
-                    Text("价格表只在打开 App 和点「保存并同步」时拉取。")
+                    Text("价格表只在打开 App 和「保存并同步」时拉取。")
+                        .font(.caption2)
+                        .foregroundStyle(Theme.muted)
+                } label: {
+                    label("价格表", detail: draft.priceToken.isEmpty ? "未填令牌" : "已填")
                 }
 
-                Section {
+                // 和电脑同步
+                DisclosureGroup(isExpanded: $openSync) {
                     TextField("https://chenyegames.ddns.net:5188", text: $draft.pcBaseURL)
                         .keyboardType(.URL)
                         .autocorrectionDisabled()
@@ -34,17 +42,33 @@ struct SettingsView: View {
                     SecureField("同步密钥", text: $draft.syncKey)
                     Button {
                         store.settings = draft
-                        Task {
-                            await store.syncAcks()
-                            syncResult = store.statusText
-                        }
+                        Task { await store.syncAcks() }
                     } label: {
                         Text("立即同步确认记录")
                     }
-                } header: {
-                    Text("和电脑同步")
-                } footer: {
                     Text("电脑关机时不影响手机使用，下次连上会自动补上。")
+                        .font(.caption2)
+                        .foregroundStyle(Theme.muted)
+                } label: {
+                    label("和电脑同步", detail: draft.syncKey.isEmpty ? "未配置" : "已配置")
+                }
+
+                // AI
+                DisclosureGroup(isExpanded: $openAI) {
+                    SecureField("DeepSeek API Key", text: $draft.deepSeekKey)
+                    Button {
+                        store.settings = draft
+                        Task { await store.testModel() }
+                    } label: {
+                        Text("测试连接")
+                    }
+                    if !store.modelStatus.isEmpty {
+                        Text(store.modelStatus)
+                            .font(.caption2)
+                            .foregroundStyle(Theme.muted)
+                    }
+                } label: {
+                    label("AI 对话", detail: draft.deepSeekKey.isEmpty ? "未填 Key" : "已填")
                 }
 
                 Section {
@@ -64,11 +88,8 @@ struct SettingsView: View {
                 } header: {
                     Text("补货提醒")
                 } footer: {
-                    Text("每次刷新库存发现补货就提醒一次（5 分钟内不重复）。可在系统设置里关闭。")
-                }
-
-                Section("AI 对话") {
-                    SecureField("DeepSeek API Key", text: $draft.deepSeekKey)
+                    Text("每次刷新库存发现补货就提醒一次（5 分钟内不重复）。")
+                        .foregroundStyle(Theme.muted)
                 }
 
                 Section {
@@ -94,6 +115,16 @@ struct SettingsView: View {
             }
             .navigationTitle("设置")
             .onAppear { draft = store.settings }
+        }
+    }
+
+    private func label(_ title: String, detail: String) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Text(detail)
+                .font(.caption)
+                .foregroundStyle(Theme.muted)
         }
     }
 }

@@ -36,6 +36,32 @@ struct RestockItem: Codable, Identifiable, Hashable {
     }
 }
 
+/// 补货历史的一条
+struct HistoryItem: Identifiable, Hashable {
+    var sku: String
+    var ackDate: String
+    var ackAt: String
+    var qty: Double?
+    var priceText: String?
+
+    var id: String { ackDate + "|" + sku + "|" + ackAt }
+
+    var timeText: String {
+        // 2026-11-09T17:16:58 -> 17:16
+        guard let t = ackAt.split(separator: "T").last else { return ackAt }
+        return String(t.prefix(5))
+    }
+
+    init?(row: [String: Any]) {
+        guard let sku = row["sku"] as? String else { return nil }
+        self.sku = sku
+        self.ackDate = row["ack_date"] as? String ?? ""
+        self.ackAt = row["ack_at"] as? String ?? ""
+        self.qty = (row["qty"] as? NSNumber)?.doubleValue
+        self.priceText = row["price_text"] as? String
+    }
+}
+
 /// 一条聊天记录
 struct ChatLine: Identifiable, Equatable {
     let id = UUID()
