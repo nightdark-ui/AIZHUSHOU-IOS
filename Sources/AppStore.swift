@@ -353,6 +353,49 @@ final class AppStore: ObservableObject {
         !settings.deepSeekKey.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
+    // MARK: - 备份 / 恢复
+
+    /// 导出备份，返回文件路径（成功后可以分享出去）
+    func exportBackup() -> URL? {
+        do {
+            let url = try Backup.export(settings: settings,
+                                        snapshots: Storage.loadSnapshots(),
+                                        acks: Storage.loadAcks(),
+                                        pushed: Storage.loadPushed(),
+                                        productCount: products.count)
+            Backup.cleanupOld()
+            backupMessage = "备份已生成：\(url.lastPathComponent)"
+            return url
+        } catch {
+            backupMessage = "备份失败：\(error.localizedDescription)"
+            return nil
+        }
+    }
+
+    /// 从备份文件恢复
+    func importBackup(from url: URL) {
+        do {
+            let pack = try Backup.load(from: url)
+            settings = pack.settings
+            saveSettings()
+            Storage.restoreSnapshots(pack.snapshots)
+            Storage.restoreAcks(pack.acks)
+            Storage.restorePushed(pack.pushed)
+
+            products = Storage.loadProducts()
+            restock = RestockEngine.build(products: products, day: today,
+                                          threshold: settings.threshold,
+                                          acks: Storage.loadAcks())
+            pendingAcks = Storage.pendingCount()
+            lastSyncFailed = false
+            syncWarning = ""
+            statusText = "已从备份恢复（\(pack.createdAt)）"
+            backupMessage = "恢复成功：\(pack.snapshots.count) 天快照，\(pack.acks.count) 条确认"
+        } catch {
+            backupMessage = "恢复失败：\(error.localizedDescription)"
+        }
+    }
+
     // MARK: - 和电脑双向同步
 
     /// 推自己的确认记录 + 拉电脑的，最后合并

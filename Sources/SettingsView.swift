@@ -12,6 +12,9 @@ struct SettingsView: View {
     @State private var showFolderPicker = false
     @State private var showTestAlert = false
     @State private var openPcStatus = false
+    @State private var backupURL: URL?
+    @State private var showShare = false
+    @State private var showImport = false
     @State private var rebuildNote = ""
 
     var body: some View {
@@ -214,6 +217,37 @@ struct SettingsView: View {
                     }
                 }
 
+                Section {
+                    Button {
+                        if let url = store.exportBackup() {
+                            backupURL = url
+                            showShare = true
+                        }
+                    } label: {
+                        Text("导出备份（存到「文件」App）")
+                    }
+
+                    Button {
+                        showImport = true
+                    } label: {
+                        Text("从备份恢复")
+                    }
+
+                    if !store.backupMessage.isEmpty {
+                        Text(store.backupMessage)
+                            .font(.caption)
+                            .foregroundStyle(store.backupMessage.hasPrefix("备份已生成")
+                                             || store.backupMessage.hasPrefix("恢复成功")
+                                             ? Theme.ok : Theme.danger)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                } header: {
+                    Text("备份与恢复")
+                } footer: {
+                    Text("备份包含：令牌、密钥、每日快照、补货确认。换证书或删了重装后，从这里一键恢复。")
+                        .foregroundStyle(Theme.muted)
+                }
+
                 Section("状态") {
                     Text(store.statusText)
                         .font(.footnote)
@@ -232,6 +266,22 @@ struct SettingsView: View {
                 Button("好", role: .cancel) {}
             } message: {
                 Text("请等 5 秒。如果 5 秒后没看到通知，说明系统通知权限被关掉了，去「设置 → 通知 → AI小助手」打开。")
+            }
+            .sheet(isPresented: $showShare) {
+                if let url = backupURL {
+                    ShareLink(item: url) {
+                        Label("保存备份文件", systemImage: "square.and.arrow.up")
+                    }
+                    .padding(30)
+                    .presentationDetents([.height(180)])
+                }
+            }
+            .fileImporter(isPresented: $showImport,
+                          allowedContentTypes: [.json],
+                          allowsMultipleSelection: false) { result in
+                if case .success(let urls) = result, let url = urls.first {
+                    store.importBackup(from: url)
+                }
             }
             .onAppear { draft = store.settings }
         }

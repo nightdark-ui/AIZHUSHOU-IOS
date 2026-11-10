@@ -125,4 +125,26 @@ struct Storage {
         let pushed = loadPushed()
         return acks.subtracting(pushed).count
     }
+
+
+    // MARK: - 备份恢复
+
+    static func restoreSnapshots(_ dict: [String: [String: Double]]) {
+        guard !dict.isEmpty else { return }
+        if let data = try? JSONEncoder().encode(dict) {
+            try? data.write(to: url("snapshots.json"), options: .atomic)
+        }
+    }
+
+    static func restoreAcks(_ list: [String]) {
+        if let data = try? JSONEncoder().encode(list) {
+            try? data.write(to: url("acks.json"), options: .atomic)
+        }
+    }
+
+    static func restorePushed(_ list: [String]) {
+        if let data = try? JSONEncoder().encode(list) {
+            try? data.write(to: url("pushed.json"), options: .atomic)
+        }
+    }
 }
