@@ -2,10 +2,11 @@ import Foundation
 
 /// 上一轮的状态（用于「还有别的吗」）
 struct RuleTurn {
-    var kind = ""          // "price"
+    var kind = ""          // "price" / "choose"
     var low: Double = 0
     var high: Double = 0
     var shown: Int = 0
+    var options: [String] = []   // 让用户点选时的候选编号
 }
 
 /// 本地规则引擎：编号直达、区间、价格区间、闲聊，毫秒级
@@ -108,11 +109,14 @@ enum Rules {
         // 7a. 有多种写法：2002 / 2002-1
         let variants = variantList(code, in: products)
         if variants.count > 1 {
-            var lines = ["「\(code)」有 \(variants.count) 种写法："]
+            var lines = ["「\(code)」有 \(variants.count) 种写法，点下面选一个："]
+            let picks = variants.prefix(8).map { $0.sku }
             for v in variants.prefix(8) {
                 lines.append("· \(v.sku)  \(stockText(v))")
             }
-            return (lines.joined(separator: "\n"), nil)
+            var turn = RuleTurn(kind: "choose")
+            turn.options = picks
+            return (lines.joined(separator: "\n"), turn)
         }
 
         guard let p = find(code, in: products) else {

@@ -438,6 +438,9 @@ final class AppStore: ObservableObject {
         if let answer = result.text {
             var line = ChatLine(role: "assistant", text: greet(answer), mode: "rule")
             line.images = imagesFor(question: question, answer: answer)
+            if let turn = result.turn, turn.kind == "choose" {
+                line.options = turn.options
+            }
             chat.append(line)
             return
         }

@@ -151,6 +151,7 @@ struct ChatView: View {
             }
 
             VStack(alignment: isUser ? .trailing : .leading, spacing: 3) {
+                // 气泡宽度上限，保证长文本折行
                 Text(line.text)
                     .font(.system(size: 15))
                     .foregroundStyle(isUser ? .white : Theme.text)
@@ -178,6 +179,20 @@ struct ChatView: View {
                         .foregroundStyle(Theme.muted)
                         .padding(.leading, 3)
                 }
+                if !line.options.isEmpty {
+                    HStack(spacing: 8) {
+                        ForEach(line.options, id: \.self) { sku in
+                            Button {
+                                Task { await store.ask(sku) }
+                            } label: {
+                                Text(sku).pill()
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.top, 4)
+                }
+
                 if !line.images.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
                         ForEach(Array(line.images.enumerated()), id: \.offset) { idx, path in
@@ -196,7 +211,8 @@ struct ChatView: View {
 
             if !isUser { Spacer(minLength: 44) }
         }
-        .frame(maxWidth: bubbleWidth, alignment: isUser ? .trailing : .leading)
+        .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
+        .padding(.leading, isUser ? 0 : 0)
     }
 
     private var bubbleWidth: CGFloat {

@@ -71,13 +71,14 @@ struct MiniClock: View {
 
 /// 统一的胶囊按钮：白底 + 细边框（和聊天页左上角的提示同一风格）
 struct PillButton: ViewModifier {
+    var blue: Bool = false
     var active: Bool = false
     var filled: Bool = false
 
     func body(content: Content) -> some View {
         content
-            .font(.system(size: 13, weight: .medium))
-            .foregroundStyle(filled ? Color.white : (active ? Theme.brand : Theme.muted))
+            .font(.system(size: 14, weight: .medium))
+            .foregroundStyle(filled ? Color.white : ((blue || active) ? Theme.brand : Theme.muted))
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .background(filled ? Theme.ok : Theme.panel)
@@ -87,7 +88,7 @@ struct PillButton: ViewModifier {
 }
 
 extension View {
-    func pill(active: Bool = false, filled: Bool = false) -> some View {
-        modifier(PillButton(active: active, filled: filled))
+    func pill(blue: Bool = false, active: Bool = false, filled: Bool = false) -> some View {
+        modifier(PillButton(blue: blue, active: active, filled: filled))
     }
 }

@@ -35,7 +35,7 @@ struct RestockView: View {
                             if !selecting { selected.removeAll() }
                         } label: {
                             Text(selecting ? "完成" : "选择")
-                                .pill(active: selecting)
+                                .pill(blue: true, active: true)
                         }
                     }
                 }
@@ -43,7 +43,7 @@ struct RestockView: View {
                     Button {
                         showRules.toggle()
                     } label: {
-                        Text("规则").pill()
+                        Text("规则").pill(blue: true)
                     }
                 }
             }
@@ -201,23 +201,16 @@ struct RestockView: View {
                         .foregroundStyle(item.level == "danger" ? Theme.danger : Theme.warn)
                 }
                 HStack {
-                    Text("原 \(Int(item.prevQty ?? 0)) → 现 \(Int(item.qty ?? 0))")
-                        .font(.caption)
-                        .foregroundStyle(Theme.warn)
                     Spacer()
-                    Text("少了 \(Int(abs(item.change)))")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundStyle((item.qty ?? 0) <= 0 ? Theme.danger : Theme.text)
                     if !selecting {
                         Button {
                             store.ack(item)
                         } label: {
                             Text("确认")
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(.system(size: 15, weight: .semibold))
                                 .foregroundStyle(Theme.ok)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 10)
                                 .background(Theme.okSoft)
                                 .clipShape(Capsule())
                                 .overlay(Capsule().stroke(Theme.ok.opacity(0.35), lineWidth: 1))
