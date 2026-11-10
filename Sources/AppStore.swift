@@ -72,22 +72,30 @@ final class AppStore: ObservableObject {
         defer { syncing = false }
 
         do {
-            let priceRows = try await WPSClient.pull(
-                token: settings.priceToken.isEmpty ? settings.inventoryToken : settings.priceToken,
-                fileId: settings.priceFileId,
-                scriptId: settings.priceScriptId
-            )
-
-            let stockRows = try await WPSClient.pull(
+            // 库存表：让脚本把「数量」原文传回来（sum=0 不预先求和）
+            statusText = "正在拉库存表…"
+            let stockRows = try await WPSClient.pullAll(
                 token: settings.inventoryToken,
                 fileId: settings.inventoryFileId,
-                scriptId: settings.inventoryScriptId
+                scriptId: settings.inventoryScriptId,
+                argv: ["mode": "codes", "field": "库存", "sum": "0",
+                       "gap": "4", "dropEmpty": "1", "money": "0"]
+            )
+
+            // 价格表：没填价的款也要保留
+            statusText = "正在拉价格表…"
+            let priceRows = try await WPSClient.pullAll(
+                token: settings.priceToken.isEmpty ? settings.inventoryToken : settings.priceToken,
+                fileId: settings.priceFileId,
+                scriptId: settings.priceScriptId,
+                argv: ["mode": "codes", "field": "单价/码", "sum": "0",
+                       "gap": "1", "dropEmpty": "0", "money": "1"]
             )
 
             var priceMap: [String: (String?, Double?)] = [:]
             for row in priceRows {
                 guard let code = pick(row, ["编号", "sku", "code"]) else { continue }
-                let text = pick(row, ["单价/码", "单价", "价格"]) 
+                let text = pick(row, ["单价/码", "单价", "价格"])
                 priceMap[code.uppercased()] = (text, parseNumber(text))
             }
 
@@ -99,7 +107,7 @@ final class AppStore: ObservableObject {
                 if seen.contains(key) { continue }
                 seen.insert(key)
 
-                let qtyText = pick(row, ["数量", "库存", "qty"])
+                let qtyText = pick(row, ["库存", "数量", "qty"])
                 let qty = parseNumber(qtyText)
                 let p = priceMap[key]
                 result.append(Product(
