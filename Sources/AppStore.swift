@@ -422,12 +422,10 @@ final class AppStore: ObservableObject {
                 msg += "，提醒线没有变化"
             }
             lastAcksMessage = msg
-            statusText = msg
             return msg
         } catch {
             let msg = "同步失败：\(error.localizedDescription)"
             lastAcksMessage = msg
-            statusText = msg
             return msg
         }
     }

@@ -11,6 +11,7 @@ struct SettingsView: View {
     @State private var openAI = false
     @State private var showFolderPicker = false
     @State private var showTestAlert = false
+    @State private var openPcStatus = false
     @State private var rebuildNote = ""
 
     var body: some View {
@@ -186,6 +187,33 @@ struct SettingsView: View {
                     }
                 }
 
+                DisclosureGroup(isExpanded: $openPcStatus) {
+                    Text(store.lastAcksMessage.isEmpty ? "还没同步过" : store.lastAcksMessage)
+                        .font(.footnote)
+                        .foregroundStyle(store.lastAcksMessage.hasPrefix("同步成功")
+                                         ? Theme.ok : Theme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if store.pendingAcks > 0 {
+                        Text("还有 \(store.pendingAcks) 条确认没送到电脑")
+                            .font(.caption)
+                            .foregroundStyle(Theme.warn)
+                    }
+                    Button {
+                        store.settings = draft
+                        Task { _ = await store.syncAcks() }
+                    } label: {
+                        Text("立即重试")
+                    }
+                } label: {
+                    HStack {
+                        Text("电脑端同步状态")
+                        Spacer()
+                        Text(pcStatusText)
+                            .font(.caption)
+                            .foregroundStyle(pcStatusColor)
+                    }
+                }
+
                 Section("状态") {
                     Text(store.statusText)
                         .font(.footnote)
@@ -207,6 +235,20 @@ struct SettingsView: View {
             }
             .onAppear { draft = store.settings }
         }
+    }
+
+    private var pcStatusText: String {
+        if store.pendingAcks > 0 { return "\(store.pendingAcks) 条待推送" }
+        if store.lastAcksMessage.hasPrefix("同步成功") { return "已连接" }
+        if store.lastAcksMessage.hasPrefix("同步失败") { return "未连接" }
+        return "未同步"
+    }
+
+    private var pcStatusColor: Color {
+        if store.pendingAcks > 0 { return Theme.warn }
+        if store.lastAcksMessage.hasPrefix("同步成功") { return Theme.ok }
+        if store.lastAcksMessage.hasPrefix("同步失败") { return Theme.danger }
+        return Theme.muted
     }
 
     private func label(_ title: String, detail: String) -> some View {
