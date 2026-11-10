@@ -17,6 +17,7 @@ final class AppStore: ObservableObject {
     @Published var lastSync: Date?
     @Published var lastPriceSync: Date?
 
+    private var lastTurn: RuleTurn?
     private let settingsKey = "aizhushou.settings.v1"
     private let lastSyncKey = "aizhushou.lastsync"
     private let lastPriceKey = "aizhushou.lastprice"
@@ -346,8 +347,11 @@ final class AppStore: ObservableObject {
         chat.append(ChatLine(role: "user", text: question, mode: ""))
 
         // 先走规则
-        if let answer = Rules.answer(question, products: products,
-                                     restock: restock, threshold: settings.threshold) {
+        let result = Rules.answer(question, products: products,
+                                  restock: restock, threshold: settings.threshold,
+                                  turn: lastTurn)
+        lastTurn = result.turn
+        if let answer = result.text {
             chat.append(ChatLine(role: "assistant", text: greet(answer), mode: "rule"))
             return
         }

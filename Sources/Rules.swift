@@ -1,42 +1,77 @@
 import Foundation
 
-/// 本地规则引擎：编号直达的问题不用联网，毫秒级
+/// 上一轮的状态（用于「还有别的吗」）
+struct RuleTurn {
+    var kind = ""          // "price"
+    var low: Double = 0
+    var high: Double = 0
+    var shown: Int = 0
+}
+
+/// 本地规则引擎：编号直达、区间、价格区间、闲聊，毫秒级
 enum Rules {
 
-    /// 尝试用规则回答；返回 nil 表示规则答不了（交给 AI）
+    static let pageSize = 30
+
+    /// 返回 (回答, 下一轮的上下文)；回答为 nil 表示规则答不了
     static func answer(_ text: String,
                        products: [Product],
                        restock: [RestockItem],
-                       threshold: Double) -> String? {
+                       threshold: Double,
+                       turn: RuleTurn?) -> (text: String?, turn: RuleTurn?) {
 
         let msg = normalize(text)
-        guard !msg.isEmpty else { return nil }
+        guard !msg.isEmpty else { return (nil, turn) }
 
-        // 补货总览
-        if msg.contains("补货") || msg.contains("要补") || msg.contains("缺货") {
-            if let code = extractCodes(msg).first, let p = find(code, in: products) {
-                return restockAdvice(p, threshold: threshold)
-            }
-            if restock.isEmpty {
-                return "现在没有需要补货的款 👍"
-            }
-            var lines = ["需要补货的有 \(restock.count) 个款："]
-            for item in restock.prefix(10) {
-                lines.append(detailLine(item))
-            }
-            if restock.count > 10 { lines.append("……还有 \(restock.count - 10) 个") }
-            return lines.joined(separator: "\n")
+        // 0. 追问：还有别的吗 / 继续
+        if let t = turn, t.kind == "price", isFollowUp(msg) {
+            return pricePage(t, products: products)
         }
 
-        // 「有没有300」「够300吗」
+        // 1. 闲聊
+        if let chat = chitchat(msg, productCount: products.count) {
+            return (chat, nil)
+        }
+
+        // 2. 价格区间（价格10到20的款）
+        if let range = priceRange(msg) {
+            let t = RuleTurn(kind: "price", low: range.0, high: range.1, shown: 0)
+            return pricePage(t, products: products)
+        }
+
+        // 3. 编号区间（2001-2010 库存）
+        if let cr = codeRange(msg, products: products), !cr.skus.isEmpty {
+            var lines = ["\(cr.from)–\(cr.to) 共 \(cr.skus.count) 个："]
+            for p in cr.skus.prefix(40) {
+                lines.append("· \(p.sku)  " + qtyBrief(p))
+            }
+            if cr.skus.count > 40 { lines.append("……还有 \(cr.skus.count - 40) 个") }
+            return (lines.joined(separator: "\n"), nil)
+        }
+
+        // 4. 补货
+        if msg.contains("补货") || msg.contains("要补") || msg.contains("缺货") {
+            if let code = extractCodes(msg).first, let p = find(code, in: products) {
+                return (restockAdvice(p, threshold: threshold), nil)
+            }
+            if restock.isEmpty {
+                return ("现在没有需要补货的款 👍", nil)
+            }
+            var lines = ["需要补货的有 \(restock.count) 个款："]
+            for item in restock.prefix(10) { lines.append(detailLine(item)) }
+            if restock.count > 10 { lines.append("……还有 \(restock.count - 10) 个") }
+            return (lines.joined(separator: "\n"), nil)
+        }
+
+        // 5. 够不够（2002 有没有300）
         if let need = thresholdNumber(msg), let p = findAny(msg, in: products) {
-            return thresholdAnswer(p, need: need)
+            return (thresholdAnswer(p, need: need), nil)
         }
 
         let codes = extractCodes(msg)
-        guard !codes.isEmpty else { return nil }
+        guard !codes.isEmpty else { return (nil, nil) }
 
-        // 多个编号
+        // 6. 多个编号
         if codes.count >= 2 {
             var lines: [String] = []
             var missing: [String] = []
@@ -47,23 +82,129 @@ enum Rules {
                     missing.append(code)
                 }
             }
-            if lines.isEmpty { return nil }
+            if lines.isEmpty { return (nil, nil) }
             var out = lines.joined(separator: "\n")
             if !missing.isEmpty { out += "\n另外 \(missing.joined(separator: "、")) 没找到。" }
-            return out
+            return (out, nil)
         }
 
-        // 单个编号
+        // 7. 单个编号
         let code = codes[0]
-        guard let p = find(code, in: products) else { return nil }
+
+        // 7a. 有多种写法：2002 / 2002-1
+        let variants = variantList(code, in: products)
+        if variants.count > 1 {
+            var lines = ["「\(code)」有 \(variants.count) 种写法："]
+            for v in variants.prefix(8) {
+                lines.append("· \(v.sku)  \(stockText(v))")
+            }
+            return (lines.joined(separator: "\n"), nil)
+        }
+
+        guard let p = find(code, in: products) else { return (nil, nil) }
 
         if msg.contains("价格") || msg.contains("多少钱") || msg.contains("价") {
-            return "\(p.sku) \(priceText(p))"
+            return ("\(p.sku) \(priceText(p))", nil)
         }
-        if msg.contains("图片") || msg.contains("照片") {
-            return "图片功能还没做，先看文字吧。"
+        return (stockText(p), nil)
+    }
+
+    // MARK: - 分页（价格区间）
+
+    static func pricePage(_ turn: RuleTurn, products: [Product]) -> (String?, RuleTurn?) {
+        let low = min(turn.low, turn.high)
+        let high = max(turn.low, turn.high)
+        let all = products
+            .filter { ($0.price ?? -1) >= low && ($0.price ?? -1) <= high }
+            .sorted { $0.sku.localizedStandardCompare($1.sku) == .orderedAscending }
+
+        guard !all.isEmpty else {
+            return ("\(intText(low))–\(intText(high)) 元这批没有款。", nil)
         }
-        return stockText(p)
+
+        let start = turn.shown
+        guard start < all.count else {
+            return ("没有了，\(intText(low))–\(intText(high)) 元这批一共 \(all.count) 款。", nil)
+        }
+
+        let page = Array(all.dropFirst(start).prefix(pageSize))
+        var next = turn
+        next.shown = start + page.count
+
+        var lines: [String] = []
+        if start == 0 {
+            lines.append("\(intText(low))–\(intText(high)) 元这批共 \(all.count) 款，先给前 \(page.count) 个：")
+        } else {
+            lines.append("接着给 \(page.count) 个（\(start + 1)–\(start + page.count)）：")
+        }
+        for p in page {
+            lines.append("\(p.sku)  \(p.priceText ?? "")")
+        }
+        if next.shown >= all.count {
+            lines.append("—— 全部列完了，共 \(all.count) 款")
+        } else {
+            lines.append("—— 说「还有别的吗」看下一批")
+        }
+        return (lines.joined(separator: "\n"), next)
+    }
+
+    // MARK: - 解析
+
+    static func isFollowUp(_ msg: String) -> Bool {
+        let keys = ["还有别的", "还有吗", "还有没有", "继续", "再列", "下一批", "下一页", "其他的"]
+        return keys.contains { msg.contains($0) }
+    }
+
+    /// 价格区间：价格10到20 / 10-20元的 / 15到30块
+    static func priceRange(_ msg: String) -> (Double, Double)? {
+        let hasPriceWord = msg.contains("价") || msg.contains("元") || msg.contains("块")
+        let pattern = "(\\d{1,5}(?:\\.\\d+)?)\\s*(?:-|~|到|至|—)\\s*(\\d{1,5}(?:\\.\\d+)?)"
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let ns = msg as NSString
+        guard let m = regex.firstMatch(in: msg, range: NSRange(location: 0, length: ns.length)),
+              m.numberOfRanges >= 3 else { return nil }
+        let a = Double(ns.substring(with: m.range(at: 1))) ?? 0
+        let b = Double(ns.substring(with: m.range(at: 2))) ?? 0
+        guard a > 0, b > 0 else { return nil }
+
+        // 没写"价/元/块"时，只有数字很大（≥1000）才更像编号区间，交给编号区间处理
+        if !hasPriceWord {
+            if msg.contains("库存") || msg.contains("码") { return nil }
+            if max(a, b) >= 1000 { return nil }
+        }
+        return (min(a, b), max(a, b))
+    }
+
+    /// 编号区间：2001-2010 / SL100-120
+    static func codeRange(_ msg: String, products: [Product]) -> (from: String, to: String, skus: [Product])? {
+        let pattern = "([A-Za-z]{0,4})(\\d{1,6})\\s*(?:-|~|到|至|—)\\s*([A-Za-z]{0,4})(\\d{1,6})"
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let ns = msg as NSString
+        guard let m = regex.firstMatch(in: msg, range: NSRange(location: 0, length: ns.length)),
+              m.numberOfRanges >= 5 else { return nil }
+
+        let preA = ns.substring(with: m.range(at: 1)).uppercased()
+        let numA = Int(ns.substring(with: m.range(at: 2))) ?? 0
+        let preB = ns.substring(with: m.range(at: 3)).uppercased()
+        let numB = Int(ns.substring(with: m.range(at: 4))) ?? 0
+        guard numA > 0, numB > 0 else { return nil }
+        let low = min(numA, numB), high = max(numA, numB)
+        guard high - low <= 500 else { return nil }
+
+        let pre = preA.isEmpty ? preB : preA
+        let matched = products.filter { p in
+            let s = p.sku.uppercased()
+            guard pre.isEmpty || s.hasPrefix(pre) else { return false }
+            // 取编号里的第一段数字
+            var digits = ""
+            for ch in s.dropFirst(pre.count) {
+                if ch.isNumber { digits.append(ch) } else { break }
+            }
+            guard let v = Int(digits) else { return false }
+            return v >= low && v <= high
+        }.sorted { $0.sku.localizedStandardCompare($1.sku) == .orderedAscending }
+
+        return (from: "\(pre)\(low)", to: "\(pre)\(high)", skus: matched)
     }
 
     // MARK: - 回答片段
@@ -82,13 +223,22 @@ enum Rules {
         return "还有 " + amount(p, total: q) + " 码"
     }
 
-    /// 有算式就带上明细：96+103+95+117+166 = 577
+    /// 有算式就带明细：96+103+95+117+166 = 577
     static func amount(_ p: Product, total: Double) -> String {
         let raw = (p.qtyText ?? "").trimmingCharacters(in: .whitespaces)
-        guard !raw.isEmpty, Double(raw) == nil else {
-            return "\(Int(total))"
-        }
+        guard !raw.isEmpty, Double(raw) == nil else { return "\(Int(total))" }
         return "\(raw) = \(Int(total))"
+    }
+
+    static func qtyBrief(_ p: Product) -> String {
+        guard let q = p.qty else {
+            if let t = p.qtyText, !t.isEmpty { return "「\(t)」" }
+            return "没填"
+        }
+        if q <= 0 { return "0" }
+        let raw = (p.qtyText ?? "").trimmingCharacters(in: .whitespaces)
+        if !raw.isEmpty, Double(raw) == nil { return "\(raw) = \(Int(q))" }
+        return "\(Int(q))"
     }
 
     static func detailLine(_ item: RestockItem) -> String {
@@ -116,6 +266,28 @@ enum Rules {
         return "\(p.sku) 只剩 \(detail) 码，不够 \(n)（差 \(Int(need - q)) 码）。"
     }
 
+    // MARK: - 闲聊
+
+    static func chitchat(_ msg: String, productCount: Int) -> String? {
+        let greetings = ["你好", "您好", "在吗", "在不在", "hi", "hello", "哈喽", "早上好", "晚上好", "下午好"]
+        let thanks = ["谢谢", "多谢", "感谢", "辛苦"]
+        let who = ["你是谁", "你叫什么", "你能干什么", "你会什么", "怎么用"]
+
+        if who.contains(where: { msg.contains($0) }) {
+            return "我是你的库存小助手。可以这样问我：\n· 2002 库存\n· 2002 多少钱\n· 2002 有没有300\n· 2001-2010 库存\n· 价格10到20的款\n· 有什么要补货的"
+        }
+        if thanks.contains(where: { msg.contains($0) }) {
+            return "不客气，主人。"
+        }
+        if greetings.contains(where: { msg.lowercased() == $0 || msg.hasPrefix($0) }) {
+            if productCount == 0 {
+                return "主人好！我还没有数据，先去「设置」同步一次吧。"
+            }
+            return "主人好！我是 AI 小助手，可以帮主人查库存、查价格、看补货。"
+        }
+        return nil
+    }
+
     // MARK: - 文本处理
 
     static func normalize(_ text: String) -> String {
@@ -126,9 +298,7 @@ enum Rules {
         return s
     }
 
-    /// 抽出消息里像编号的词（数字/字母组合）
     static func extractCodes(_ text: String) -> [String] {
-        // 去掉「有没有300」「够300吗」里的数字，避免当成编号
         var work = text
         let pattern = "^(.*?)(有没有|够不够|够|有|到|超过|大于|至少)\\s*\\d{2,6}\\s*(码|米)?\\s*(吗|么|呢)?$"
         if let regex = try? NSRegularExpression(pattern: pattern),
@@ -141,10 +311,8 @@ enum Rules {
         let codeRegex = try? NSRegularExpression(pattern: "[A-Za-z]{0,6}[0-9]{1,8}(?:[-_][0-9]{1,4})?[\\u4e00-\\u9fa5]{0,4}")
         if let regex = codeRegex {
             let ns = work as NSString
-            let matches = regex.matches(in: work, range: NSRange(location: 0, length: ns.length))
-            for m in matches {
-                var s = ns.substring(with: m.range)
-                s = s.trimmingCharacters(in: .whitespaces)
+            for m in regex.matches(in: work, range: NSRange(location: 0, length: ns.length)) {
+                var s = ns.substring(with: m.range).trimmingCharacters(in: .whitespaces)
                 if s.count < 2 { continue }
                 if s.allSatisfy({ $0.isNumber }) && s.count < 3 { continue }
                 if !found.contains(s) { found.append(s) }
@@ -159,28 +327,40 @@ enum Rules {
         let ns = text as NSString
         guard let m = regex.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)),
               m.numberOfRanges > 1 else { return nil }
-        let numText = ns.substring(with: m.range(at: 1))
-        return Double(numText)
+        return Double(ns.substring(with: m.range(at: 1)))
     }
 
     static func find(_ code: String, in products: [Product]) -> Product? {
         let target = code.uppercased()
         if let exact = products.first(where: { $0.sku.uppercased() == target }) { return exact }
-        // 忽略括号/中文后缀的近似
         return products.first { $0.sku.uppercased().hasPrefix(target) }
     }
 
+    /// 同一编号的不同写法：2002 / 2002-1 / 2002（32梭）
+    static func variantList(_ code: String, in products: [Product]) -> [Product] {
+        let t = code.uppercased()
+        return products.filter { p in
+            let s = p.sku.uppercased()
+            if s == t { return true }
+            if s.hasPrefix(t + "-") || s.hasPrefix(t + "_") { return true }
+            if s.hasPrefix(t + "(") || s.hasPrefix(t + "（") { return true }
+            return false
+        }
+    }
+
     static func findAny(_ text: String, in products: [Product]) -> Product? {
-        let codes = extractCodes(text)
-        for c in codes {
+        for c in extractCodes(text) {
             if let p = find(c, in: products) { return p }
         }
-        // 「2002有没有300」这类：取开头那段
         let head = text.split(whereSeparator: { "有没有够到超过大于至少码吗么呢? ".contains($0) }).first
         if let h = head {
             let s = String(h).trimmingCharacters(in: .whitespaces)
             if !s.isEmpty, let p = find(s, in: products) { return p }
         }
         return nil
+    }
+
+    static func intText(_ v: Double) -> String {
+        v == v.rounded() ? "\(Int(v))" : String(format: "%.1f", v)
     }
 }
