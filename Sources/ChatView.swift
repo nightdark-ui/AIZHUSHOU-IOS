@@ -167,6 +167,14 @@ struct ChatView: View {
                 Text(line.text)
                     .font(.system(size: 15))
                     .foregroundStyle(isUser ? .white : Theme.text)
+                    .textSelection(.enabled)
+                    .contextMenu {
+                        Button {
+                            UIPasteboard.general.string = line.text
+                        } label: {
+                            Label("复制全部", systemImage: "doc.on.doc")
+                        }
+                    }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 9)
                     .background(isUser ? Theme.brand : Theme.panel)
@@ -182,16 +190,19 @@ struct ChatView: View {
                         .padding(.leading, 3)
                 }
                 if !line.images.isEmpty {
-                    HStack(spacing: 6) {
-                        ForEach(line.images, id: \.self) { path in
-                            Button {
-                                preview = path
-                            } label: {
-                                thumb(path)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(line.images, id: \.self) { path in
+                                Button {
+                                    preview = path
+                                } label: {
+                                    thumb(path)
+                                }
                             }
                         }
+                        .padding(.vertical, 2)
                     }
-                    .padding(.top, 2)
+                    .frame(maxWidth: 260, alignment: .leading)
                 }
             }
 
@@ -223,12 +234,14 @@ struct ChatView: View {
                 Button("关闭") { preview = nil }
                     .padding()
             }
-            ScrollView([.horizontal, .vertical]) {
-                if let img = UIImage(contentsOfFile: path) {
-                    Image(uiImage: img)
-                        .resizable()
-                        .scaledToFit()
-                }
+            if let img = UIImage(contentsOfFile: path) {
+                Image(uiImage: img)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(.horizontal, 6)
+            } else {
+                Text("图片打不开").foregroundStyle(.white)
             }
         }
         .background(Color.black)

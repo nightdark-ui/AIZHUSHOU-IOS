@@ -406,18 +406,31 @@ final class AppStore: ObservableObject {
         return parts.joined(separator: "\n")
     }
 
-    /// 什么时候配图：问了"图片/看看"或者回答是关于某个编号的
+    /// 什么时候配图，配几张：
+    ///   问了「图片」→ 每个编号各出一张（最多 6 个）
+    ///   没问图片   → 只给单个编号的预览图（最多 2 张）
     private func imagesFor(question: String, answer: String) -> [String] {
         guard library.hasFolder else { return [] }
 
         let wantsImage = question.contains("图") || question.contains("照片")
             || question.contains("看看") || question.contains("长什么样")
         let codes = Rules.extractCodes(question)
-        guard let code = codes.first, let p = Rules.find(code, in: products) else {
-            return []
+        guard !codes.isEmpty else { return [] }
+
+        if codes.count > 1 {
+            guard wantsImage else { return [] }
+            var out: [String] = []
+            for c in codes.prefix(6) {
+                guard let p = Rules.find(c, in: products) else { continue }
+                if let first = library.images(for: p.sku, limit: 1).first {
+                    out.append(first)
+                }
+            }
+            return out
         }
-        if !wantsImage && codes.count > 1 { return [] }
-        return library.images(for: p.sku)
+
+        guard let p = Rules.find(codes[0], in: products) else { return [] }
+        return library.images(for: p.sku, limit: wantsImage ? 4 : 2)
     }
 
     /// 统一称呼：回答开头叫「主人」
