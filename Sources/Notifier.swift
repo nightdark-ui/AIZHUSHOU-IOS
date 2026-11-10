@@ -21,19 +21,35 @@ enum Notifier {
             .requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
     }
 
-    /// 每次刷新库存发现补货就提醒（5 分钟内不重复弹）
-    static func notifyRestockIfNeeded(count: Int) {
+    /// 只有出现「新的补货款」才提醒。
+    /// 同一批货反复刷新不会再弹；确认掉一部分也不会弹。
+    static func notifyRestockIfNeeded(count: Int, skus: [String] = []) {
         guard count > 0 else { return }
 
-        let key = "aizhushou.lastNotify"
+        let sigKey = "aizhushou.notify.skus"
+        let timeKey = "aizhushou.notify.time"
+
+        let current = Set(skus.map { $0.uppercased() })
+        let lastSig = UserDefaults.standard.string(forKey: sigKey) ?? ""
+        let previous = Set(lastSig.split(separator: ",").map { String($0) })
+
+        // 一个都没新增 → 不打扰
+        let fresh = current.subtracting(previous)
+        guard !fresh.isEmpty else { return }
+
+        // 最短间隔 60 秒，避免刚启动连弹
         let now = Date().timeIntervalSince1970
-        let last = UserDefaults.standard.double(forKey: key)
-        if last > 0, now - last < 300 { return }
-        UserDefaults.standard.set(now, forKey: key)
+        let last = UserDefaults.standard.double(forKey: timeKey)
+        if last > 0, now - last < 60 { return }
+
+        UserDefaults.standard.set(current.sorted().joined(separator: ","), forKey: sigKey)
+        UserDefaults.standard.set(now, forKey: timeKey)
 
         let content = UNMutableNotificationContent()
         content.title = "有 \(count) 个款需要补货"
-        content.body = "打开 AI小助手看看补货清单。"
+        content.body = fresh.count >= count
+            ? "打开 AI小助手看看补货清单。"
+            : "新增 \(fresh.count) 个：\(fresh.sorted().prefix(5).joined(separator: "、"))"
         content.sound = .default
 
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)

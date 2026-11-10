@@ -149,7 +149,7 @@ struct SettingsView: View {
                 } header: {
                     Text("补货提醒")
                 } footer: {
-                    Text("每次刷新库存发现补货就提醒一次（5 分钟内不重复）。")
+                    Text("出现新的补货款时才提醒；同一批反复刷新不会重复打扰。")
                         .foregroundStyle(Theme.muted)
                 }
 

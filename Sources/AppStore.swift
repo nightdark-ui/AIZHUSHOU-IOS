@@ -187,7 +187,7 @@ final class AppStore: ObservableObject {
             statusText = "同步成功：\(result.count) 个款，补货 \(restock.count) 个（\(lastSyncText)）"
                 + (prices ? "" : " · 仅库存")
 
-            Notifier.scheduleRestock(count: restock.count)
+            Notifier.notifyRestockIfNeeded(count: restock.count, skus: restock.map { $0.sku })
             await syncAcks()
         } catch {
             statusText = "同步失败：\(error.localizedDescription)"
@@ -239,7 +239,7 @@ final class AppStore: ObservableObject {
         let key = Storage.ackKey(sku: item.sku, prevDate: item.prevDate, qty: item.qty)
         Storage.addAck(key)
         restock.removeAll { $0.sku == item.sku }
-        Notifier.scheduleRestock(count: restock.count)
+        Notifier.notifyRestockIfNeeded(count: restock.count, skus: restock.map { $0.sku })
         Task { await syncAcks() }
     }
 
@@ -353,7 +353,7 @@ final class AppStore: ObservableObject {
             restock = RestockEngine.build(products: products, day: today,
                                           threshold: settings.threshold,
                                           acks: Storage.loadAcks())
-            Notifier.scheduleRestock(count: restock.count)
+            Notifier.notifyRestockIfNeeded(count: restock.count, skus: restock.map { $0.sku })
             var msg = "同步成功：电脑共 \(result.acks.count) 条确认，新增 \(added) 条"
             if changed > 0 {
                 let shown = changedNames.prefix(5).joined(separator: "、")
