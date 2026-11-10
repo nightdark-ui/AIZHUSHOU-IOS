@@ -167,6 +167,8 @@ struct ChatView: View {
                 Text(line.text)
                     .font(.system(size: 15))
                     .foregroundStyle(isUser ? .white : Theme.text)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
                     .contextMenu {
                         Button {
@@ -207,6 +209,11 @@ struct ChatView: View {
 
             if !isUser { Spacer(minLength: 44) }
         }
+        .frame(maxWidth: bubbleWidth, alignment: isUser ? .trailing : .leading)
+    }
+
+    private var bubbleWidth: CGFloat {
+        max(200, UIScreen.main.bounds.width - 110)
     }
 
     private func thumb(_ path: String) -> some View {
