@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @EnvironmentObject private var store: AppStore
@@ -8,6 +9,7 @@ struct SettingsView: View {
     @State private var openPrice = false
     @State private var openSync = false
     @State private var openAI = false
+    @State private var showFolderPicker = false
 
     var body: some View {
         NavigationStack {
@@ -73,6 +75,41 @@ struct SettingsView: View {
 
                 Section {
                     HStack {
+                        Text("图库文件夹")
+                        Spacer()
+                        Text(store.library.hasFolder
+                             ? (store.library.folderName.isEmpty ? "已选择" : store.library.folderName)
+                             : "未选择")
+                            .font(.caption)
+                            .foregroundStyle(Theme.muted)
+                    }
+                    Button {
+                        showFolderPicker = true
+                    } label: {
+                        Text(store.library.hasFolder ? "重新选择文件夹" : "选择图库文件夹")
+                    }
+                    if store.library.hasFolder {
+                        Button {
+                            Task { await store.library.rebuild() }
+                        } label: {
+                            Text(store.library.building ? "正在建索引…" : "重建索引（\(store.library.fileCount) 张图）")
+                        }
+                        .disabled(store.library.building)
+                    }
+                    if !store.library.errorText.isEmpty {
+                        Text(store.library.errorText)
+                            .font(.caption2)
+                            .foregroundStyle(Theme.danger)
+                    }
+                } header: {
+                    Text("图片图库")
+                } footer: {
+                    Text("选一个放着款式图片的文件夹（文件名用编号，比如 2002.jpg）。问「2002 图片」就会带图。")
+                        .foregroundStyle(Theme.muted)
+                }
+
+                Section {
+                    HStack {
                         Text("默认提醒线")
                         Spacer()
                         TextField("300", value: $draft.threshold, format: .number)
@@ -114,6 +151,13 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("设置")
+            .fileImporter(isPresented: $showFolderPicker,
+                          allowedContentTypes: [.folder],
+                          allowsMultipleSelection: false) { result in
+                if case .success(let urls) = result, let url = urls.first {
+                    store.library.setFolder(url)
+                }
+            }
             .onAppear { draft = store.settings }
         }
     }

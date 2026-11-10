@@ -6,6 +6,7 @@ struct ChatView: View {
     @StateObject private var speech = SpeechListener()
     @State private var input = ""
     @State private var showModelInfo = false
+    @State private var preview: String?
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -60,6 +61,12 @@ struct ChatView: View {
             }
             .onChange(of: speech.text) { _, newValue in
                 if !newValue.isEmpty { input = newValue }
+            }
+            .sheet(item: Binding(
+                get: { preview.map { PreviewPath(path: $0) } },
+                set: { if $0 == nil { preview = nil } }
+            )) { item in
+                fullImage(item.path)
             }
             .alert("模型状态", isPresented: $showModelInfo) {
                 Button("测试连接") { Task { await store.testModel() } }
@@ -174,10 +181,57 @@ struct ChatView: View {
                         .foregroundStyle(Theme.muted)
                         .padding(.leading, 3)
                 }
+                if !line.images.isEmpty {
+                    HStack(spacing: 6) {
+                        ForEach(line.images, id: \.self) { path in
+                            Button {
+                                preview = path
+                            } label: {
+                                thumb(path)
+                            }
+                        }
+                    }
+                    .padding(.top, 2)
+                }
             }
 
             if isUser { Spacer(minLength: 0) } else { Spacer(minLength: 44) }
         }
+    }
+
+    private func thumb(_ path: String) -> some View {
+        Group {
+            if let img = UIImage(contentsOfFile: path) {
+                Image(uiImage: img)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Rectangle().fill(Theme.bg)
+                    .overlay(Image(systemName: "photo").foregroundStyle(Theme.muted))
+            }
+        }
+        .frame(width: 78, height: 78)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .stroke(Theme.line, lineWidth: 1))
+    }
+
+    private func fullImage(_ path: String) -> some View {
+        VStack(spacing: 0) {
+            HStack {
+                Spacer()
+                Button("关闭") { preview = nil }
+                    .padding()
+            }
+            ScrollView([.horizontal, .vertical]) {
+                if let img = UIImage(contentsOfFile: path) {
+                    Image(uiImage: img)
+                        .resizable()
+                        .scaledToFit()
+                }
+            }
+        }
+        .background(Color.black)
     }
 
     private var avatar: some View {
@@ -188,4 +242,9 @@ struct ChatView: View {
             .clipShape(Circle())
             .overlay(Circle().stroke(Theme.line, lineWidth: 1))
     }
+}
+
+struct PreviewPath: Identifiable {
+    let path: String
+    var id: String { path }
 }

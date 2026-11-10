@@ -68,6 +68,7 @@ struct ChatLine: Identifiable, Equatable {
     var role: String           // user / assistant
     var text: String
     var mode: String = ""      // rule / llm
+    var images: [String] = []  // 本地图片绝对路径
 }
 
 /// App 设置，存在 UserDefaults 里

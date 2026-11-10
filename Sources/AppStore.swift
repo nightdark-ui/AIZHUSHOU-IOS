@@ -14,6 +14,7 @@ final class AppStore: ObservableObject {
     @Published var history: [HistoryItem] = []
     @Published var historyLoading = false
     @Published var modelStatus = ""
+    let library = ImageLibrary()
     @Published var lastSync: Date?
     @Published var lastPriceSync: Date?
 
@@ -25,6 +26,7 @@ final class AppStore: ObservableObject {
     init() {
         loadSettings()
         Notifier.requestPermission()
+        if library.hasFolder { Task { await library.rebuild() } }
         products = Storage.loadProducts()
         if !products.isEmpty {
             statusText = "本地有 \(products.count) 个款"
@@ -352,7 +354,9 @@ final class AppStore: ObservableObject {
                                   turn: lastTurn)
         lastTurn = result.turn
         if let answer = result.text {
-            chat.append(ChatLine(role: "assistant", text: greet(answer), mode: "rule"))
+            var line = ChatLine(role: "assistant", text: greet(answer), mode: "rule")
+            line.images = imagesFor(question: question, answer: answer)
+            chat.append(line)
             return
         }
 
@@ -366,7 +370,9 @@ final class AppStore: ObservableObject {
                                                      key: settings.deepSeekKey,
                                                      context: context,
                                                      history: chat)
-            chat.append(ChatLine(role: "assistant", text: greet(reply), mode: "llm"))
+            var line = ChatLine(role: "assistant", text: greet(reply), mode: "llm")
+            line.images = imagesFor(question: question, answer: reply)
+            chat.append(line)
         } catch {
             chat.append(ChatLine(role: "assistant",
                                  text: "主人，这个问题需要联网的 AI，但现在用不了：\(error.localizedDescription)",
@@ -393,6 +399,20 @@ final class AppStore: ObservableObject {
             parts.append("（用户没提具体编号，也没有补货记录）")
         }
         return parts.joined(separator: "\n")
+    }
+
+    /// 什么时候配图：问了"图片/看看"或者回答是关于某个编号的
+    private func imagesFor(question: String, answer: String) -> [String] {
+        guard library.hasFolder else { return [] }
+
+        let wantsImage = question.contains("图") || question.contains("照片")
+            || question.contains("看看") || question.contains("长什么样")
+        let codes = Rules.extractCodes(question)
+        guard let code = codes.first, let p = Rules.find(code, in: products) else {
+            return []
+        }
+        if !wantsImage && codes.count > 1 { return [] }
+        return library.images(for: p.sku)
     }
 
     /// 统一称呼：回答开头叫「主人」
