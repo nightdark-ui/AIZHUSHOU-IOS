@@ -92,7 +92,7 @@ struct SettingsView: View {
                         Button {
                             Task { await store.library.rebuild() }
                         } label: {
-                            Text(store.library.building ? "正在建索引…" : "重建索引（\(store.library.fileCount) 张图）")
+                            Text(store.library.building ? "正在建索引…" : "重建索引（\(store.library.fileCount) 张图\(store.library.mapped ? " · 已读映射" : "")）")
                         }
                         .disabled(store.library.building)
                     }

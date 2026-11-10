@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import SwiftUI
 
 @MainActor
@@ -15,6 +16,7 @@ final class AppStore: ObservableObject {
     @Published var historyLoading = false
     @Published var modelStatus = ""
     let library = ImageLibrary()
+    private var libraryCancellable: AnyCancellable?
     @Published var lastSync: Date?
     @Published var lastPriceSync: Date?
 
@@ -27,6 +29,9 @@ final class AppStore: ObservableObject {
         loadSettings()
         Notifier.requestPermission()
         if library.hasFolder { Task { await library.rebuild() } }
+        libraryCancellable = library.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
         products = Storage.loadProducts()
         if !products.isEmpty {
             statusText = "本地有 \(products.count) 个款"

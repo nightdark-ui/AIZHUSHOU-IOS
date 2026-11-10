@@ -157,9 +157,9 @@ struct ChatView: View {
     private func bubble(_ line: ChatLine) -> some View {
         let isUser = line.role == "user"
         HStack(alignment: .top, spacing: 8) {
-            if isUser { Spacer(minLength: 44) }
-
-            if !isUser {
+            if isUser {
+                Spacer(minLength: 44)
+            } else {
                 avatar
             }
 
@@ -195,7 +195,7 @@ struct ChatView: View {
                 }
             }
 
-            if isUser { Spacer(minLength: 0) } else { Spacer(minLength: 44) }
+            if !isUser { Spacer(minLength: 44) }
         }
     }
 
