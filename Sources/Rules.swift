@@ -27,7 +27,7 @@ enum Rules {
 
         // 0. 追问：还有别的吗 / 继续
         if let t = turn, t.kind == "price", isFollowUp(msg) {
-            return pricePage(t, products: products)
+            return pricePage(t, products: products, size: followUpCount(msg) ?? pageSize)
         }
 
         // 1. 闲聊
@@ -38,6 +38,11 @@ enum Rules {
         // 1b. 离题（天气、新闻、写代码…）
         if let off = offtopic(msg) {
             return (off, nil)
+        }
+
+        // 1b2. 总览/统计
+        if let overview = overviewReply(msg, products: products, restock: restock) {
+            return (overview, nil)
         }
 
         // 1c. 比某个编号贵 / 便宜
@@ -51,13 +56,36 @@ enum Rules {
             return pricePage(t, products: products)
         }
 
-        // 3. 编号区间（2001-2010 库存）
+        // 3. 编号区间（2001-2010 库存），支持加价格/库存条件
         if let cr = codeRange(msg, products: products), !cr.skus.isEmpty {
-            var lines = ["\(cr.from)–\(cr.to) 共 \(cr.skus.count) 个："]
-            for p in cr.skus.prefix(40) {
+            var pool = cr.skus
+            var condText: [String] = []
+
+            if let pr = priceRange(msg) {
+                pool = pool.filter { p in
+                    guard let v = p.price else { return false }
+                    return v >= pr.0 && v <= pr.1
+                }
+                condText.append("价格 \(intText(pr.0))–\(intText(pr.1))")
+            }
+            if let qmin = qtyMinCondition(msg) {
+                pool = pool.filter { ($0.qty ?? -1) >= qmin }
+                condText.append("库存 ≥ \(Int(qmin))")
+            }
+            if let qmax = qtyMaxCondition(msg) {
+                pool = pool.filter { ($0.qty ?? -1) <= qmax && $0.qty != nil }
+                condText.append("库存 ≤ \(Int(qmax))")
+            }
+
+            if pool.isEmpty {
+                return ("\(cr.from)–\(cr.to) 里没有符合条件的款。", nil)
+            }
+            let extra = condText.isEmpty ? "" : "（\(condText.joined(separator: "、"))）"
+            var lines = ["\(cr.from)–\(cr.to) 共 \(cr.skus.count) 个，符合条件 \(pool.count) 个\(extra)："]
+            for p in pool.prefix(40) {
                 lines.append("· \(p.sku)  " + qtyBrief(p))
             }
-            if cr.skus.count > 40 { lines.append("……还有 \(cr.skus.count - 40) 个") }
+            if pool.count > 40 { lines.append("……还有 \(pool.count - 40) 个") }
             return (lines.joined(separator: "\n"), nil)
         }
 
@@ -76,8 +104,13 @@ enum Rules {
         }
 
         // 5. 够不够（2002 有没有300）
-        if let need = thresholdNumber(msg), let p = findAny(msg, in: products) {
-            return (thresholdAnswer(p, need: need) + metersSuffix(p, want: wantMeters), nil)
+        if let need = thresholdNumber(msg) {
+            if let p = findAny(msg, in: products) {
+                return (thresholdAnswer(p, need: need) + metersSuffix(p, want: wantMeters), nil)
+            }
+            if extractCodes(msg).isEmpty {
+                return ("要问哪个编号？比如「2002 有没有\(Int(need))」或「SL1004 够\(Int(need))吗」。", nil)
+            }
         }
 
         let codes = extractCodes(msg)
@@ -106,6 +139,16 @@ enum Rules {
         // 7. 单个编号
         let code = codes[0]
 
+        // 7a00. 只有前缀匹配到多个（PDX1008 → PDX1008-1 / PDX1008-2）
+        let prefixed = products.filter { $0.sku.uppercased().hasPrefix(code.uppercased()) }
+        if prefixed.count > 1, !prefixed.contains(where: { $0.sku.uppercased() == code.uppercased() }) {
+            var lines = ["「\(code)」对应 \(prefixed.count) 个编号，点下面选一个："]
+            for v in prefixed.prefix(8) { lines.append("· \(v.sku)  \(stockText(v))") }
+            var turn = RuleTurn(kind: "choose")
+            turn.options = prefixed.prefix(8).map { $0.sku }
+            return (lines.joined(separator: "\n"), turn)
+        }
+
         // 7a0. 编号 + 说明：9005 32梭 → 9005(32梭）
         if let exact = resolveWithSuffix(code: code, message: msg, products: products) {
             return (stockText(exact), nil)
@@ -132,7 +175,7 @@ enum Rules {
                 lines.append("（直接发编号就行）")
                 return (lines.joined(separator: "\n"), nil)
             }
-            return (nil, nil)
+            return ("没找到「\(code)」。可以说完整编号（比如 2002），或者问「2001-2010 库存」。", nil)
         }
 
         let asksPrice = msg.contains("价格") || msg.contains("多少钱") || msg.contains("价")
@@ -184,9 +227,65 @@ enum Rules {
         v == v.rounded() ? "\(Int(v))" : String(format: "%.1f", v)
     }
 
+    /// 总览统计
+    static func overviewReply(_ msg: String, products: [Product], restock: [RestockItem]) -> String? {
+        let keys = ["总览", "整体", "一共", "总共", "多少种", "多少个款", "统计", "销量", "卖得", "情况"]
+        guard keys.contains(where: { msg.contains($0) }) else { return nil }
+
+        let total = products.count
+        let withQty = products.filter { $0.qty != nil }.count
+        let zero = products.filter { ($0.qty ?? 1) <= 0 && $0.qty != nil }.count
+        let withPrice = products.filter { $0.price != nil }.count
+        let outToday = restock.count
+
+        var lines: [String] = []
+        lines.append("一共 \(total) 个款，其中 \(withQty) 个有数量、\(withPrice) 个有价格。")
+        lines.append("没货的 \(zero) 个。")
+        if outToday > 0 {
+            lines.append("今天需要补的 \(outToday) 个。")
+        } else {
+            lines.append("今天没有需要补的。")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    /// 「库存 500 以上」「500 码以上」
+    static func qtyMinCondition(_ msg: String) -> Double? {
+        let patterns = [
+            "(?:库存|数量)\\s*(?:超过|大于|高于|多于|至少)\\s*(\\d{1,6})",
+            "(\\d{1,6})\\s*(?:码|米)?\\s*(?:以上|起|往上)"
+        ]
+        for pat in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pat) else { continue }
+            let ns = msg as NSString
+            if let m = regex.firstMatch(in: msg, range: NSRange(location: 0, length: ns.length)),
+               m.numberOfRanges > 1, let v = Double(ns.substring(with: m.range(at: 1))) {
+                return v
+            }
+        }
+        return nil
+    }
+
+    /// 「库存 500 以下」「500 码以内」
+    static func qtyMaxCondition(_ msg: String) -> Double? {
+        let patterns = [
+            "(?:库存|数量)\\s*(?:少于|小于|低于|不足|不到)\\s*(\\d{1,6})",
+            "(\\d{1,6})\\s*(?:码|米)?\\s*(?:以下|以内)"
+        ]
+        for pat in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pat) else { continue }
+            let ns = msg as NSString
+            if let m = regex.firstMatch(in: msg, range: NSRange(location: 0, length: ns.length)),
+               m.numberOfRanges > 1, let v = Double(ns.substring(with: m.range(at: 1))) {
+                return v
+            }
+        }
+        return nil
+    }
+
     // MARK: - 分页（价格区间）
 
-    static func pricePage(_ turn: RuleTurn, products: [Product]) -> (String?, RuleTurn?) {
+    static func pricePage(_ turn: RuleTurn, products: [Product], size: Int = pageSize) -> (String?, RuleTurn?) {
         let low = min(turn.low, turn.high)
         let high = max(turn.low, turn.high)
         let all = products
@@ -202,7 +301,7 @@ enum Rules {
             return ("没有了，\(intText(low))–\(intText(high)) 元这批一共 \(all.count) 款。", nil)
         }
 
-        let page = Array(all.dropFirst(start).prefix(pageSize))
+        let page = Array(all.dropFirst(start).prefix(size))
         var next = turn
         next.shown = start + page.count
 
@@ -226,8 +325,20 @@ enum Rules {
     // MARK: - 解析
 
     static func isFollowUp(_ msg: String) -> Bool {
-        let keys = ["还有别的", "还有吗", "还有没有", "继续", "再列", "下一批", "下一页", "其他的"]
+        let keys = ["还有别的", "还有吗", "还有没有", "继续", "再列", "下一批",
+                    "下一页", "其他的", "换一批", "再来"]
         return keys.contains { msg.contains($0) }
+    }
+
+    /// 「换一批 20 个」里的数量
+    static func followUpCount(_ msg: String) -> Int? {
+        let pattern = "(\\d{1,3})\\s*(?:个|款|条)"
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let ns = msg as NSString
+        guard let m = regex.firstMatch(in: msg, range: NSRange(location: 0, length: ns.count)),
+              m.numberOfRanges > 1,
+              let n = Int(ns.substring(with: m.range(at: 1))), n > 0 else { return nil }
+        return min(n, 100)
     }
 
     /// 价格区间：价格10到20 / 10-20元的 / 15到30块 / 10元左右
@@ -531,7 +642,17 @@ enum Rules {
     static func find(_ code: String, in products: [Product]) -> Product? {
         let target = code.uppercased()
         if let exact = products.first(where: { $0.sku.uppercased() == target }) { return exact }
-        return products.first { $0.sku.uppercased().hasPrefix(target) }
+        if let prefix = products.first(where: { $0.sku.uppercased().hasPrefix(target) }) {
+            return prefix
+        }
+        // 括号里的片段：「A78」→ SL5006(A78)
+        if target.count >= 2 {
+            return products.first { p in
+                let s = p.sku.uppercased()
+                return s.contains("(\(target)") || s.contains("（\(target)") || s.contains("\(target))")
+            }
+        }
+        return nil
     }
 
     /// 同一编号的不同写法：2002 / 2002-1 / 2002（32梭）

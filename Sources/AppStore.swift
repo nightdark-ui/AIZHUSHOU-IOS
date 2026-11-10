@@ -23,6 +23,7 @@ final class AppStore: ObservableObject {
     @Published var lastPriceSync: Date?
 
     private var lastTurn: RuleTurn?
+    private var lastSku: String?
     private let settingsKey = "aizhushou.settings.v1"
     private let lastSyncKey = "aizhushou.lastsync"
     private let lastPriceKey = "aizhushou.lastprice"
@@ -272,7 +273,10 @@ final class AppStore: ObservableObject {
         Notifier.notifyRestockIfNeeded(count: restock.count,
                                        skus: restock.map { $0.sku },
                                        detail: restock.map { ($0.sku, $0.prevQty ?? 0, $0.qty ?? 0) })
-        Task { await syncAcks() }
+        Task {
+            await syncAcks()
+            await loadHistory()
+        }
     }
 
     // MARK: - 补货历史
@@ -430,14 +434,26 @@ final class AppStore: ObservableObject {
 
         chat.append(ChatLine(role: "user", text: question, mode: ""))
 
+        // 上一轮问过某个编号，这轮只说「价格呢」「库存呢」→ 拼上上次的编号
+        var effective = question
+        let intentWords = ["价格", "多少钱", "库存", "还有多少", "剩多少", "有货"]
+        if Rules.extractCodes(effective).isEmpty, let last = lastSku,
+           intentWords.contains(where: { effective.contains($0) }) {
+            effective = effective + " " + last
+        }
+
         // 先走规则
-        let result = Rules.answer(question, products: products,
+        let result = Rules.answer(effective, products: products,
                                   restock: restock, threshold: settings.threshold,
                                   turn: lastTurn)
+        if let code = Rules.extractCodes(effective).first,
+           let hit = Rules.find(code, in: products) {
+            lastSku = hit.sku
+        }
         lastTurn = result.turn
         if let answer = result.text {
             var line = ChatLine(role: "assistant", text: greet(answer), mode: "rule")
-            line.images = imagesFor(question: question, answer: answer)
+            line.images = imagesFor(question: effective, answer: answer)
             if let turn = result.turn, turn.kind == "choose" {
                 line.options = turn.options
             }

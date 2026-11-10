@@ -9,6 +9,15 @@ struct HistoryView: View {
         return dict.keys.sorted(by: >).map { ($0, dict[$0] ?? []) }
     }
 
+    private func changeText(_ item: HistoryItem) -> String {
+        let now = Int(item.qty ?? 0)
+        guard let prev = item.prevQty else {
+            return "补货后剩 \(now)"
+        }
+        let diff = now - Int(prev)
+        return "原 \(Int(prev)) 变成今天 \(now)（\(diff)）；当前 \(now)"
+    }
+
     var body: some View {
         Group {
             if store.history.isEmpty {
@@ -22,26 +31,20 @@ struct HistoryView: View {
                     ForEach(grouped, id: \.date) { group in
                         Section(header: Text("\(group.date)  ·  \(group.items.count) 条")) {
                             ForEach(group.items) { item in
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 3) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack {
                                         Text(item.sku)
                                             .font(.system(.body, design: .monospaced))
                                             .fontWeight(.semibold)
+                                        Spacer()
                                         Text(item.timeText)
                                             .font(.caption2)
                                             .foregroundStyle(Theme.muted)
                                     }
-                                    Spacer()
-                                    VStack(alignment: .trailing, spacing: 3) {
-                                        Text(item.qty.map { "剩 \(Int($0))" } ?? "—")
-                                            .font(.subheadline)
-                                            .foregroundStyle(Theme.ok)
-                                        if let p = item.priceText, !p.isEmpty {
-                                            Text("¥\(p)")
-                                                .font(.caption)
-                                                .foregroundStyle(Theme.muted)
-                                        }
-                                    }
+                                    Text(changeText(item))
+                                        .font(.system(size: 13))
+                                        .foregroundStyle(Theme.muted)
+                                        .fixedSize(horizontal: false, vertical: true)
                                 }
                             }
                         }

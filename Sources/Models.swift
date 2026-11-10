@@ -42,7 +42,7 @@ struct HistoryItem: Identifiable, Hashable {
     var ackDate: String
     var ackAt: String
     var qty: Double?
-    var priceText: String?
+    var prevQty: Double?
 
     var id: String { ackDate + "|" + sku + "|" + ackAt }
 
@@ -58,7 +58,7 @@ struct HistoryItem: Identifiable, Hashable {
         self.ackDate = row["ack_date"] as? String ?? ""
         self.ackAt = row["ack_at"] as? String ?? ""
         self.qty = (row["qty"] as? NSNumber)?.doubleValue
-        self.priceText = row["price_text"] as? String
+        self.prevQty = (row["prev_qty"] as? NSNumber)?.doubleValue
     }
 }
 
