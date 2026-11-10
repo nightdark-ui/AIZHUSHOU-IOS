@@ -5,7 +5,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         // 启动瞬间的窗口底色，避免闪黑
-        let bg = UIColor(red: 0.961, green: 0.965, blue: 0.973, alpha: 1)
+        let bg = UIColor.white
         UIWindow.appearance().backgroundColor = bg
         return true
     }
@@ -20,7 +20,7 @@ struct AIZhushouApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(store)
-                .background(Color(hex: 0xF5F6F8).ignoresSafeArea())
+                .background(Color.white.ignoresSafeArea())
         }
     }
 }
