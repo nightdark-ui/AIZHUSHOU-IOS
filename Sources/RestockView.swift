@@ -195,10 +195,8 @@ struct RestockView: View {
                     Text(item.sku)
                         .font(.system(.body, design: .monospaced))
                         .fontWeight(.semibold)
+                        .foregroundStyle(item.level == "danger" ? Theme.danger : Theme.text)
                     Spacer()
-                    Text(item.levelLabel)
-                        .font(.caption2)
-                        .foregroundStyle(item.level == "danger" ? Theme.danger : Theme.warn)
                 }
 
                 // 详细情况：原来多少 → 现在多少
