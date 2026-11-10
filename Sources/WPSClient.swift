@@ -30,7 +30,7 @@ struct WPSClient {
                         fileId: String,
                         scriptId: String,
                         argv baseArgv: [String: Any],
-                        pageSize: Int = 300,
+                        pageSize: Int = 6000,
                         maxPages: Int = 80) async throws -> [[String: Any]] {
         var collected: [[String: Any]] = []
         var start = 0

@@ -116,8 +116,11 @@ final class AppStore: ObservableObject {
         defer { syncing = false }
 
         do {
+            var stockRows: [[String: Any]] = []
             statusText = "正在拉库存表…"
-            let stockRows = try await WPSClient.pullAll(
+
+            // 库存表和价格表同时拉（每张表一次请求就能拿全）
+            async let stockTask = WPSClient.pullAll(
                 token: settings.inventoryToken,
                 fileId: settings.inventoryFileId,
                 scriptId: settings.inventoryScriptId,
@@ -127,11 +130,10 @@ final class AppStore: ObservableObject {
                        "gap": "4", "dropEmpty": "1", "money": "0"]
             )
 
-            // 价格表：只有"完整同步"时才拉
             var priceMap: [String: (String?, Double?)] = [:]
+
             if prices {
-                statusText = "正在拉价格表…"
-                let priceRows = try await WPSClient.pullAll(
+                async let priceTask = WPSClient.pullAll(
                     token: settings.priceToken.isEmpty ? settings.inventoryToken : settings.priceToken,
                     fileId: settings.priceFileId,
                     scriptId: settings.priceScriptId,
@@ -140,7 +142,9 @@ final class AppStore: ObservableObject {
                            "sum": "0",
                            "gap": "1", "dropEmpty": "0", "money": "1"]
                 )
-                for row in priceRows {
+                let pair = try await (stockTask, priceTask)
+                stockRows = pair.0
+                for row in pair.1 {
                     guard let code = pick(row, [settings.fieldCode, "编号", "sku", "code"]) else { continue }
                     let text = pick(row, [settings.fieldPrice, "单价/码", "单价", "价格"])
                     priceMap[code.uppercased()] = (text, parseNumber(text))
@@ -150,7 +154,10 @@ final class AppStore: ObservableObject {
                 for p in products {
                     priceMap[p.sku.uppercased()] = (p.priceText, p.price)
                 }
+                stockRows = try await stockTask
             }
+
+            statusText = "正在整理数据…"
 
             var result: [Product] = []
             var seen = Set<String>()
