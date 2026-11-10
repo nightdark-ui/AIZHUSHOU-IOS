@@ -83,7 +83,10 @@ enum Rules {
             var missing: [String] = []
             for code in codes {
                 if let p = find(code, in: products) {
-                    lines.append("\(p.sku)  \(priceText(p))  \(stockText(p))")
+                    // 价格、库存分两行，方便看
+                    let price = p.priceText?.isEmpty == false ? p.priceText! : "未填"
+                    lines.append("\(p.sku)  价格 \(price)")
+                    lines.append("       \(stockText(p))")
                 } else {
                     missing.append(code)
                 }
@@ -123,8 +126,16 @@ enum Rules {
             return (nil, nil)
         }
 
-        if msg.contains("价格") || msg.contains("多少钱") || msg.contains("价") {
-            return ("\(p.sku) \(priceText(p))", nil)
+        let asksPrice = msg.contains("价格") || msg.contains("多少钱") || msg.contains("价")
+        let asksStock = msg.contains("库存") || msg.contains("还剩") || msg.contains("还有")
+            || msg.contains("够") || msg.contains("码") || msg.contains("米")
+        let price = p.priceText?.isEmpty == false ? p.priceText! : "未填"
+
+        if asksPrice && asksStock {
+            return ("\(p.sku)\n价格 \(price)\n\(stockText(p))" + metersSuffix(p, want: wantMeters), nil)
+        }
+        if asksPrice {
+            return ("\(p.sku)  价格 \(price)", nil)
         }
         return (stockText(p) + metersSuffix(p, want: wantMeters), nil)
     }

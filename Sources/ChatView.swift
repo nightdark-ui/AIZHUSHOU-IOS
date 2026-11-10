@@ -6,7 +6,9 @@ struct ChatView: View {
     @StateObject private var speech = SpeechListener()
     @State private var input = ""
     @State private var showModelInfo = false
-    @State private var preview: String?
+    @State private var previewPaths: [String] = []
+    @State private var previewIndex = 0
+    @State private var showPreview = false
     @State private var saveHint = ""
     @FocusState private var focused: Bool
 
@@ -63,23 +65,8 @@ struct ChatView: View {
             .onChange(of: speech.text) { _, newValue in
                 if !newValue.isEmpty { input = newValue }
             }
-            .sheet(item: Binding(
-                get: { preview.map { PreviewPath(path: $0) } },
-                set: { if $0 == nil { preview = nil } }
-            )) { item in
-                fullImage(item.path)
-                    .overlay(alignment: .bottom) {
-                        if !saveHint.isEmpty {
-                            Text(saveHint)
-                                .font(.footnote)
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 8)
-                                .background(Color.black.opacity(0.75))
-                                .clipShape(Capsule())
-                                .padding(.bottom, 30)
-                        }
-                    }
+            .sheet(isPresented: $showPreview) {
+                viewer
             }
             .alert("模型状态", isPresented: $showModelInfo) {
                 Button("测试连接") { Task { await store.testModel() } }
@@ -204,9 +191,11 @@ struct ChatView: View {
                 }
                 if !line.images.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
-                        ForEach(line.images, id: \.self) { path in
+                        ForEach(Array(line.images.enumerated()), id: \.offset) { idx, path in
                             Button {
-                                preview = path
+                                previewPaths = line.images
+                                previewIndex = idx
+                                showPreview = true
                             } label: {
                                 thumb(path)
                             }
@@ -237,50 +226,72 @@ struct ChatView: View {
             .stroke(Theme.line, lineWidth: 1))
     }
 
-    private func fullImage(_ path: String) -> some View {
-        GeometryReader { geo in
-            ScrollView(.vertical, showsIndicators: false) {
-                if let img = UIImage(contentsOfFile: path) {
-                    Image(uiImage: img)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: geo.size.width)
-                        .contextMenu {
-                            Button {
-                                saveToAlbum(path)
-                            } label: {
-                                Label("保存到相册", systemImage: "photo")
-                            }
-                            ShareLink(item: Image(uiImage: img),
-                                      preview: SharePreview("款式图片", image: Image(uiImage: img))) {
-                                Label("转发到其他 App", systemImage: "square.and.arrow.up")
-                            }
-                        }
-                } else {
-                    Text("图片打不开")
-                        .foregroundStyle(Theme.muted)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    private var viewer: some View {
+        ZStack(alignment: .topTrailing) {
+            Theme.bg.ignoresSafeArea()
+
+            TabView(selection: $previewIndex) {
+                ForEach(Array(previewPaths.enumerated()), id: \.offset) { idx, path in
+                    page(path).tag(idx)
                 }
             }
-            .frame(width: geo.size.width, height: geo.size.height)
-            .overlay(alignment: .topTrailing) {
-                Button {
-                    preview = nil
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(Theme.text)
-                        .frame(width: 32, height: 32)
-                        .background(.ultraThinMaterial)
-                        .clipShape(Circle())
-                        .overlay(Circle().stroke(Theme.line, lineWidth: 1))
-                }
-                .padding(.trailing, 14)
-                .padding(.top, 12)
+            .tabViewStyle(.page(indexDisplayMode: previewPaths.count > 1 ? .always : .never))
+            .indexViewStyle(.page(backgroundDisplayMode: .interactive))
+
+            Button {
+                showPreview = false
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.text)
+                    .frame(width: 32, height: 32)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(Theme.line, lineWidth: 1))
+            }
+            .padding(.trailing, 16)
+            .padding(.top, 16)
+        }
+        .presentationBackground(Theme.bg)
+        .overlay(alignment: .bottom) {
+            if !saveHint.isEmpty {
+                Text(saveHint)
+                    .font(.footnote)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(Color.black.opacity(0.7))
+                    .clipShape(Capsule())
+                    .padding(.bottom, 40)
             }
         }
-        .background(Theme.bg)
-        .presentationBackground(Theme.bg)
+    }
+
+    private func page(_ path: String) -> some View {
+        Group {
+            if let img = UIImage(contentsOfFile: path) {
+                Image(uiImage: img)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 60)
+                    .contextMenu {
+                        Button {
+                            saveToAlbum(path)
+                        } label: {
+                            Label("保存到相册", systemImage: "photo")
+                        }
+                        ShareLink(item: Image(uiImage: img),
+                                  preview: SharePreview("款式图片", image: Image(uiImage: img))) {
+                            Label("转发到其他 App", systemImage: "square.and.arrow.up")
+                        }
+                    }
+            } else {
+                Text("图片打不开")
+                    .foregroundStyle(Theme.muted)
+            }
+        }
     }
 
     private func saveToAlbum(_ path: String) {
@@ -305,7 +316,3 @@ struct ChatView: View {
     }
 }
 
-struct PreviewPath: Identifiable {
-    let path: String
-    var id: String { path }
-}
