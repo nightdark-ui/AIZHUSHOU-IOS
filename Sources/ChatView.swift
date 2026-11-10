@@ -9,6 +9,8 @@ struct ChatView: View {
     @State private var previewIndex = 0
     @State private var previewState: PreviewState?
     @State private var saveHint = ""
+    @State private var imageSelectMode = false
+    @State private var selectedImages = Set<String>()
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -63,6 +65,37 @@ struct ChatView: View {
                     .background(Theme.panel)
                     .clipShape(Capsule())
                     .overlay(Capsule().stroke(Theme.line, lineWidth: 1))
+                }
+            }
+            .overlay(alignment: .bottom) {
+                if imageSelectMode {
+                    HStack(spacing: 14) {
+                        Button {
+                            exitImageSelect()
+                        } label: {
+                            Text("取消").pill()
+                        }
+                        .buttonStyle(.plain)
+
+                        Spacer()
+
+                        Text("已选 \(selectedImages.count) 张")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Theme.muted)
+
+                        Button {
+                            saveSelectedImages()
+                        } label: {
+                            Text("保存到相册")
+                                .pill(active: !selectedImages.isEmpty, filled: !selectedImages.isEmpty)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(selectedImages.isEmpty)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Theme.panel)
+                    .overlay(Rectangle().fill(Theme.line).frame(height: 1), alignment: .top)
                 }
             }
             .overlay {
@@ -164,13 +197,6 @@ struct ChatView: View {
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
-                    .contextMenu {
-                        Button {
-                            UIPasteboard.general.string = line.text
-                        } label: {
-                            Label("复制全部", systemImage: "doc.on.doc")
-                        }
-                    }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 9)
                     .background(isUser ? Theme.brand : Theme.panel)
@@ -203,12 +229,32 @@ struct ChatView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         ForEach(Array(line.images.enumerated()), id: \.offset) { idx, path in
                             Button {
-                                previewPaths = line.images
-                                previewIndex = idx
-                                previewState = PreviewState(paths: line.images, index: idx)
+                                if imageSelectMode {
+                                    toggleImage(path)
+                                } else {
+                                    previewPaths = line.images
+                                    previewIndex = idx
+                                    previewState = PreviewState(paths: line.images, index: idx)
+                                }
                             } label: {
-                                thumb(path)
+                                ZStack(alignment: .topLeading) {
+                                    thumb(path)
+                                    if imageSelectMode {
+                                        Image(systemName: selectedImages.contains(path)
+                                              ? "checkmark.circle.fill" : "circle")
+                                            .font(.system(size: 22))
+                                            .foregroundStyle(selectedImages.contains(path) ? Theme.ok : .white)
+                                            .padding(6)
+                                    }
+                                }
                             }
+                            .buttonStyle(.plain)
+                            .simultaneousGesture(
+                                LongPressGesture(minimumDuration: 0.45).onEnded { _ in
+                                    imageSelectMode = true
+                                    selectedImages.insert(path)
+                                }
+                            )
                         }
                     }
                     .padding(.top, 2)
@@ -280,6 +326,7 @@ struct ChatView: View {
                         .scaledToFit()
                         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                         .shadow(color: Color.black.opacity(0.18), radius: 16, y: 6)
+                        .onTapGesture { previewState = nil }
                         .contextMenu {
                             Button {
                                 saveToAlbum(path)
@@ -311,6 +358,34 @@ struct ChatView: View {
                     Text("正在打开…").font(.caption).foregroundStyle(Theme.muted)
                 }
             }
+        }
+    }
+
+    private func toggleImage(_ path: String) {
+        if selectedImages.contains(path) {
+            selectedImages.remove(path)
+        } else {
+            selectedImages.insert(path)
+        }
+    }
+
+    private func exitImageSelect() {
+        imageSelectMode = false
+        selectedImages.removeAll()
+    }
+
+    /// 批量保存到相册
+    private func saveSelectedImages() {
+        var saved = 0
+        for path in selectedImages {
+            guard let img = UIImage(contentsOfFile: path) else { continue }
+            UIImageWriteToSavedPhotosAlbum(img, nil, nil, nil)
+            saved += 1
+        }
+        saveHint = saved > 0 ? "已保存 \(saved) 张到相册" : "没有可保存的图片"
+        exitImageSelect()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            if saveHint.hasPrefix("已保存") { saveHint = "" }
         }
     }
 

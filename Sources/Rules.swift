@@ -122,10 +122,20 @@ enum Rules {
             var missing: [String] = []
             for code in codes {
                 if let p = find(code, in: products) {
-                    // 价格、库存分两行，方便看
+                    if !lines.isEmpty { lines.append("") }
                     let price = p.priceText?.isEmpty == false ? p.priceText! : "未填"
-                    lines.append("\(p.sku)  价格 \(price)")
-                    lines.append("       \(stockText(p))")
+                    let total = p.qty.map { Int($0) } ?? 0
+                    if p.qty == nil {
+                        lines.append("\(p.sku)　价格 \(price) · 数量算不出来")
+                        if let t = p.qtyText, !t.isEmpty {
+                            lines.append("　　（表格里写的是「\(t)」）")
+                        }
+                    } else {
+                        lines.append("\(p.sku)　价格 \(price) · 库存 \(total) 码")
+                        if let t = p.qtyText, !t.isEmpty, Double(t) == nil {
+                            lines.append("　　（\(t)）")
+                        }
+                    }
                 } else {
                     missing.append(code)
                 }
@@ -187,7 +197,17 @@ enum Rules {
         let price = p.priceText?.isEmpty == false ? p.priceText! : "未填"
 
         if asksPrice && asksStock {
-            return ("\(p.sku)\n价格 \(price)\n\(stockText(p))" + metersSuffix(p, want: wantMeters), nil)
+            var lines = ["\(p.sku)", "价格 \(price)"]
+            if let q = p.qty {
+                lines.append("库存 \(Int(q)) 码")
+                let raw = (p.qtyText ?? "").trimmingCharacters(in: .whitespaces)
+                if !raw.isEmpty, Double(raw) == nil {
+                    lines.append("（\(raw)）")
+                }
+            } else {
+                lines.append(stockText(p))
+            }
+            return (lines.joined(separator: "\n") + metersSuffix(p, want: wantMeters), nil)
         }
         if asksPrice {
             return ("\(p.sku)  价格 \(price)", nil)
