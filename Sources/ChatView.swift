@@ -238,54 +238,22 @@ struct ChatView: View {
     }
 
     private func fullImage(_ path: String) -> some View {
-        VStack(spacing: 0) {
-            HStack {
-                Button {
-                    preview = nil
-                } label: {
-                    Text("关闭")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(Theme.brand)
-                }
-
-                Spacer()
-
-                if let image = UIImage(contentsOfFile: path) {
-                    ShareLink(item: Image(uiImage: image),
-                              preview: SharePreview("款式图片", image: Image(uiImage: image))) {
-                        Label("转发", systemImage: "square.and.arrow.up")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(Theme.brand)
-                    }
-                }
-
-                Button {
-                    saveToAlbum(path)
-                } label: {
-                    Label("保存", systemImage: "square.and.arrow.down")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(Theme.brand)
-                }
-                .padding(.leading, 14)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(Theme.panel)
-
-            Divider().overlay(Theme.line)
-
-            ScrollView([.horizontal, .vertical]) {
+        GeometryReader { geo in
+            ScrollView(.vertical, showsIndicators: false) {
                 if let img = UIImage(contentsOfFile: path) {
                     Image(uiImage: img)
                         .resizable()
                         .scaledToFit()
-                        .frame(maxWidth: .infinity)
-                        .padding(12)
+                        .frame(width: geo.size.width)
                         .contextMenu {
                             Button {
                                 saveToAlbum(path)
                             } label: {
                                 Label("保存到相册", systemImage: "photo")
+                            }
+                            ShareLink(item: Image(uiImage: img),
+                                      preview: SharePreview("款式图片", image: Image(uiImage: img))) {
+                                Label("转发到其他 App", systemImage: "square.and.arrow.up")
                             }
                         }
                 } else {
@@ -294,10 +262,25 @@ struct ChatView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
-            .background(Theme.bg)
+            .frame(width: geo.size.width, height: geo.size.height)
+            .overlay(alignment: .topTrailing) {
+                Button {
+                    preview = nil
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Theme.text)
+                        .frame(width: 32, height: 32)
+                        .background(.ultraThinMaterial)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(Theme.line, lineWidth: 1))
+                }
+                .padding(.trailing, 14)
+                .padding(.top, 12)
+            }
         }
         .background(Theme.bg)
-        .onAppear { saveHint = "" }
+        .presentationBackground(Theme.bg)
     }
 
     private func saveToAlbum(_ path: String) {
@@ -307,7 +290,7 @@ struct ChatView: View {
         }
         UIImageWriteToSavedPhotosAlbum(img, nil, nil, nil)
         saveHint = "已保存到相册"
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
             if saveHint == "已保存到相册" { saveHint = "" }
         }
     }
