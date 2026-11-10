@@ -38,7 +38,7 @@ struct InventoryView: View {
             }
             .listStyle(.plain)
             .searchable(text: $keyword, prompt: "搜编号")
-            .refreshable { await store.sync() }
+            .refreshable { await store.sync(prices: false) }
             .navigationTitle("库存")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -48,7 +48,7 @@ struct InventoryView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        Task { await store.sync() }
+                        Task { await store.sync(prices: false) }
                     } label: {
                         if store.syncing {
                             ProgressView()

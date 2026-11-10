@@ -12,9 +12,11 @@ final class AppStore: ObservableObject {
     @Published var thinking = false
     @Published var statusText = "还没同步"
     @Published var lastSync: Date?
+    @Published var lastPriceSync: Date?
 
     private let settingsKey = "aizhushou.settings.v1"
     private let lastSyncKey = "aizhushou.lastsync"
+    private let lastPriceKey = "aizhushou.lastprice"
 
     init() {
         loadSettings()
@@ -24,6 +26,9 @@ final class AppStore: ObservableObject {
         }
         if let t = UserDefaults.standard.object(forKey: lastSyncKey) as? Date {
             lastSync = t
+        }
+        if let t = UserDefaults.standard.object(forKey: lastPriceKey) as? Date {
+            lastPriceSync = t
         }
         restock = RestockEngine.build(products: products, day: today, threshold: settings.threshold,
                                       acks: Storage.loadAcks())
@@ -67,9 +72,15 @@ final class AppStore: ObservableObject {
         statusText = "设置已保存"
     }
 
+    /// 设置页「保存并同步」：库存 + 价格全拉
+    func saveAndSync() async {
+        saveSettings()
+        await sync(prices: true)
+    }
+
     // MARK: - 同步
 
-    func sync() async {
+    func sync(prices: Bool = true) async {
         guard !syncing else { return }
         syncing = true
         defer { syncing = false }
@@ -84,20 +95,27 @@ final class AppStore: ObservableObject {
                        "gap": "4", "dropEmpty": "1", "money": "0"]
             )
 
-            statusText = "正在拉价格表…"
-            let priceRows = try await WPSClient.pullAll(
-                token: settings.priceToken.isEmpty ? settings.inventoryToken : settings.priceToken,
-                fileId: settings.priceFileId,
-                scriptId: settings.priceScriptId,
-                argv: ["mode": "codes", "field": "单价/码", "sum": "0",
-                       "gap": "1", "dropEmpty": "0", "money": "1"]
-            )
-
+            // 价格表：只有"完整同步"时才拉
             var priceMap: [String: (String?, Double?)] = [:]
-            for row in priceRows {
-                guard let code = pick(row, ["编号", "sku", "code"]) else { continue }
-                let text = pick(row, ["单价/码", "单价", "价格"])
-                priceMap[code.uppercased()] = (text, parseNumber(text))
+            if prices {
+                statusText = "正在拉价格表…"
+                let priceRows = try await WPSClient.pullAll(
+                    token: settings.priceToken.isEmpty ? settings.inventoryToken : settings.priceToken,
+                    fileId: settings.priceFileId,
+                    scriptId: settings.priceScriptId,
+                    argv: ["mode": "codes", "field": "单价/码", "sum": "0",
+                           "gap": "1", "dropEmpty": "0", "money": "1"]
+                )
+                for row in priceRows {
+                    guard let code = pick(row, ["编号", "sku", "code"]) else { continue }
+                    let text = pick(row, ["单价/码", "单价", "价格"])
+                    priceMap[code.uppercased()] = (text, parseNumber(text))
+                }
+            } else {
+                // 只更新库存：沿用本地已有的价格
+                for p in products {
+                    priceMap[p.sku.uppercased()] = (p.priceText, p.price)
+                }
             }
 
             var result: [Product] = []
@@ -121,11 +139,17 @@ final class AppStore: ObservableObject {
                                       qty: nil, qtyText: nil, minQty: nil))
             }
 
+            // 保留用户手工设过的单款提醒线
+            var minMap: [String: Double] = [:]
+            for p in products { if let m = p.minQty { minMap[p.sku] = m } }
+            for idx in result.indices {
+                if let m = minMap[result[idx].sku] { result[idx].minQty = m }
+            }
+
             result.sort { $0.sku.localizedStandardCompare($1.sku) == .orderedAscending }
             products = result
             Storage.saveProducts(result)
 
-            // 记今天的快照（同一天覆盖）
             Storage.recordSnapshot(result, day: today)
 
             restock = RestockEngine.build(products: result, day: today,
@@ -134,25 +158,34 @@ final class AppStore: ObservableObject {
 
             lastSync = Date()
             UserDefaults.standard.set(lastSync, forKey: lastSyncKey)
+            if prices {
+                lastPriceSync = Date()
+                UserDefaults.standard.set(lastPriceSync, forKey: lastPriceKey)
+            }
             statusText = "同步成功：\(result.count) 个款，补货 \(restock.count) 个（\(lastSyncText)）"
+                + (prices ? "" : " · 仅库存")
         } catch {
             statusText = "同步失败：\(error.localizedDescription)"
         }
     }
 
-    /// 重新算一遍补货清单（不重新同步表格）
-    func refreshRestock() async {
-        restock = RestockEngine.build(products: products, day: today,
-                                      threshold: settings.threshold,
-                                      acks: Storage.loadAcks())
+    /// 冷启动：库存 + 价格都拉（价格 10 分钟内不重复拉）
+    func launchSync() {
+        guard !syncing, !settings.inventoryToken.isEmpty else { return }
+        let needPrice: Bool
+        if let t = lastPriceSync {
+            needPrice = Date().timeIntervalSince(t) > 600
+        } else {
+            needPrice = true
+        }
+        Task { await sync(prices: needPrice) }
     }
 
-    /// 打开 App / 切回前台时，超过 10 分钟就自动同步一次
+    /// 切回前台：只更新库存
     func autoSyncIfNeeded() {
-        guard !syncing else { return }
-        guard !settings.inventoryToken.isEmpty else { return }
+        guard !syncing, !settings.inventoryToken.isEmpty else { return }
         if let last = lastSync, Date().timeIntervalSince(last) < 600 { return }
-        Task { await sync() }
+        Task { await sync(prices: false) }
     }
 
     /// 改单个款的提醒线（nil = 恢复默认）

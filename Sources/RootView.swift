@@ -25,7 +25,7 @@ struct RootView: View {
                 .tag(3)
         }
         .tint(.blue)
-        .task { store.autoSyncIfNeeded() }
+        .task { store.launchSync() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { store.autoSyncIfNeeded() }
         }

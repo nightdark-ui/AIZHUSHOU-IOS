@@ -42,8 +42,7 @@ struct SettingsView: View {
                     }
                     Button {
                         store.settings = draft
-                        store.saveSettings()
-                        Task { await store.sync() }
+                        Task { await store.saveAndSync() }
                     } label: {
                         Text("保存并同步").frame(maxWidth: .infinity)
                     }
