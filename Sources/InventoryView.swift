@@ -38,6 +38,29 @@ struct InventoryView: View {
             }
             .listStyle(.plain)
             .searchable(text: $keyword, prompt: "搜编号")
+            .safeAreaInset(edge: .top) {
+                if store.lastSyncFailed {
+                    HStack(spacing: 6) {
+                        Image(systemName: "wifi.exclamationmark")
+                            .font(.system(size: 11))
+                        Text(store.syncWarning.isEmpty
+                             ? "没连上，显示的是 \(store.lastSyncText) 的旧数据"
+                             : store.syncWarning)
+                            .font(.system(size: 11))
+                            .lineLimit(2)
+                        Spacer()
+                        Button {
+                            Task { await store.sync(prices: false) }
+                        } label: {
+                            Text("重试").font(.system(size: 11, weight: .medium))
+                        }
+                    }
+                    .foregroundStyle(Theme.warn)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(Theme.warnSoft)
+                }
+            }
             .refreshable { await store.sync(prices: false) }
             .navigationTitle("库存")
             .toolbar {

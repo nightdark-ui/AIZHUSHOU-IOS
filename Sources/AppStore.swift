@@ -17,6 +17,8 @@ final class AppStore: ObservableObject {
     @Published var modelStatus = ""
     @Published var syncingAcks = false
     @Published var pendingAcks = 0
+    @Published var lastSyncFailed = false
+    @Published var syncWarning = ""
     @Published var lastAcksMessage = ""
     let library = ImageLibrary()
     private var libraryCancellable: AnyCancellable?
@@ -188,6 +190,16 @@ final class AppStore: ObservableObject {
             }
 
             result.sort { $0.sku.localizedStandardCompare($1.sku) == .orderedAscending }
+
+            // 数据骤减保护：明显少了一大截就不覆盖，免得把好数据冲掉
+            let before = products.count
+            if before > 200, result.count < before - max(50, before / 5) {
+                lastSyncFailed = true
+                syncWarning = "同步异常：这次只拿到 \(result.count) 个款（上次 \(before) 个），已保留旧数据。"
+                statusText = syncWarning
+                return
+            }
+
             products = result
             Storage.saveProducts(result)
 
@@ -203,6 +215,8 @@ final class AppStore: ObservableObject {
                                           acks: Storage.loadAcks())
 
             lastSync = Date()
+            lastSyncFailed = false
+            syncWarning = ""
             UserDefaults.standard.set(lastSync, forKey: lastSyncKey)
             if prices {
                 lastPriceSync = Date()
@@ -216,6 +230,7 @@ final class AppStore: ObservableObject {
                                        detail: restock.map { ($0.sku, $0.prevQty ?? 0, $0.qty ?? 0) })
             await syncAcks()
         } catch {
+            lastSyncFailed = true
             statusText = "同步失败：\(error.localizedDescription)"
         }
     }

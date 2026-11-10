@@ -16,6 +16,28 @@ struct ChatView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                if store.lastSyncFailed {
+                    HStack(spacing: 6) {
+                        Image(systemName: "wifi.exclamationmark")
+                            .font(.system(size: 11))
+                        Text(store.syncWarning.isEmpty
+                             ? "没连上，显示的是 \(store.lastSyncText) 的旧数据"
+                             : store.syncWarning)
+                            .font(.system(size: 11))
+                            .lineLimit(2)
+                        Spacer()
+                        Button {
+                            Task { await store.sync(prices: false) }
+                        } label: {
+                            Text("重试").font(.system(size: 11, weight: .medium))
+                        }
+                    }
+                    .foregroundStyle(Theme.warn)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(Theme.warnSoft)
+                }
+
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 12) {
