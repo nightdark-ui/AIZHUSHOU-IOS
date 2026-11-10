@@ -65,9 +65,15 @@ struct ChatView: View {
                     .overlay(Capsule().stroke(Theme.line, lineWidth: 1))
                 }
             }
-            .sheet(item: $previewState) { state in
-                viewer(state)
+            .overlay {
+                if let state = previewState {
+                    viewer(state)
+                        .transition(.asymmetric(
+                            insertion: .scale(scale: 0.75, anchor: .center).combined(with: .opacity),
+                            removal: .scale(scale: 0.9, anchor: .center).combined(with: .opacity)))
+                }
             }
+            .animation(.spring(response: 0.34, dampingFraction: 0.86), value: previewState != nil)
             .alert("模型状态", isPresented: $showModelInfo) {
                 Button("测试连接") { Task { await store.testModel() } }
                 Button("好", role: .cancel) {}
@@ -237,8 +243,10 @@ struct ChatView: View {
     }
 
     private func viewer(_ state: PreviewState) -> some View {
-        ZStack(alignment: .topTrailing) {
-            Color.clear
+        ZStack {
+            Color.black.opacity(0.001)
+                .ignoresSafeArea()
+                .onTapGesture { previewState = nil }
 
             TabView(selection: $previewIndex) {
                 ForEach(Array(state.paths.enumerated()), id: \.offset) { idx, path in
@@ -247,22 +255,8 @@ struct ChatView: View {
             }
             .tabViewStyle(.page(indexDisplayMode: state.paths.count > 1 ? .always : .never))
             .indexViewStyle(.page(backgroundDisplayMode: .interactive))
-
-            Button {
-                previewState = nil
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(Theme.text)
-                    .frame(width: 32, height: 32)
-                    .background(.ultraThinMaterial)
-                    .clipShape(Circle())
-                    .overlay(Circle().stroke(Theme.line, lineWidth: 1))
-            }
-            .padding(.trailing, 16)
-            .padding(.top, 16)
+            .padding(.vertical, 40)
         }
-        .presentationBackground(.clear)
         .overlay(alignment: .bottom) {
             if !saveHint.isEmpty {
                 Text(saveHint)
@@ -272,7 +266,7 @@ struct ChatView: View {
                     .padding(.vertical, 8)
                     .background(Color.black.opacity(0.7))
                     .clipShape(Capsule())
-                    .padding(.bottom, 40)
+                    .padding(.bottom, 50)
             }
         }
     }
@@ -280,24 +274,37 @@ struct ChatView: View {
     private func page(_ path: String) -> some View {
         Group {
             if let img = UIImage(contentsOfFile: path) {
-                Image(uiImage: img)
-                    .resizable()
-                    .scaledToFit()
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .shadow(color: Color.black.opacity(0.18), radius: 16, y: 6)
-                    .padding(.horizontal, 28)
-                    .padding(.vertical, 70)
-                    .contextMenu {
-                        Button {
-                            saveToAlbum(path)
-                        } label: {
-                            Label("保存到相册", systemImage: "photo")
+                ZStack(alignment: .topTrailing) {
+                    Image(uiImage: img)
+                        .resizable()
+                        .scaledToFit()
+                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .shadow(color: Color.black.opacity(0.18), radius: 16, y: 6)
+                        .contextMenu {
+                            Button {
+                                saveToAlbum(path)
+                            } label: {
+                                Label("保存到相册", systemImage: "photo")
+                            }
+                            ShareLink(item: Image(uiImage: img),
+                                      preview: SharePreview("款式图片", image: Image(uiImage: img))) {
+                                Label("转发到其他 App", systemImage: "square.and.arrow.up")
+                            }
                         }
-                        ShareLink(item: Image(uiImage: img),
-                                  preview: SharePreview("款式图片", image: Image(uiImage: img))) {
-                            Label("转发到其他 App", systemImage: "square.and.arrow.up")
-                        }
+
+                    Button {
+                        previewState = nil
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 28, height: 28)
+                            .background(Color.black.opacity(0.45))
+                            .clipShape(Circle())
                     }
+                    .padding(10)
+                }
+                .padding(.horizontal, 24)
             } else {
                 VStack(spacing: 8) {
                     ProgressView()
