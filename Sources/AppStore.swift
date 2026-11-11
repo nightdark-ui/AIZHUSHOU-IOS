@@ -552,6 +552,10 @@ final class AppStore: ObservableObject {
             var line = ChatLine(role: "assistant", text: greet("这是刚才问的款："), mode: "rule")
             line.images = imagesFor(question: question + " " + lastCodes.joined(separator: " "),
                                     answer: "")
+            let missing = missingImageSkus(question: question + " " + lastCodes.joined(separator: " "))
+            if !missing.isEmpty {
+                line.text += "\n（图库里没有 \(missing.prefix(4).joined(separator: "、")) 款的图片）"
+            }
             chat.append(line)
             return
         }
