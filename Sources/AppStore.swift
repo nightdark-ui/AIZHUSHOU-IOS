@@ -602,7 +602,7 @@ final class AppStore: ObservableObject {
             }
             let wantsImage = effective.contains("图片") || effective.contains("照片")
             if wantsImage && line.images.isEmpty && line.options.isEmpty {
-                line.text += "\n" + imageLibraryHint()
+                line.text += "\n（图库里没找到这个编号的图，检查设置里的图库文件夹）"
             }
             chat.append(line)
             return
@@ -693,24 +693,6 @@ final class AppStore: ObservableObject {
             parts.append("（用户没提具体编号，也没有补货记录）")
         }
         return parts.joined(separator: "\n")
-    }
-
-    /// 没找到图时，说明图库的当前状态，方便排查
-    private func imageLibraryHint() -> String {
-        if !library.hasFolder {
-            return "（还没选图库文件夹：设置 → 图片图库 → 选择图库文件夹）"
-        }
-        if library.building {
-            return "（图库正在建索引，等几秒再问一次）"
-        }
-        if library.fileCount == 0 {
-            return "（图库文件夹里没读到图片，检查文件夹里有没有 images 子目录）"
-        }
-        if !library.mapped && library.fileCount > 0 {
-            return "（图库里 \(library.fileCount) 张图，但没读到编号对照表 codes.json，"
-                + "所以对不上编号。把 codes.json 放到图库文件夹里，再点重建索引）"
-        }
-        return "（图库已连：\(library.fileCount) 张图 · 已读映射，但这个编号没有对应的图）"
     }
 
     /// 什么时候配图，配几张：
