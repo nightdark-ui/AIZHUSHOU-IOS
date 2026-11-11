@@ -12,6 +12,9 @@ struct SettingsView: View {
     @State private var showFolderPicker = false
     @State private var showTestAlert = false
     @State private var openPcStatus = false
+    @State private var openThreshold = false
+    @State private var thresholdMessage = ""
+    @FocusState private var thresholdFocused: Bool
     @State private var backupURL: URL?
     @State private var showShare = false
     @State private var showImport = false
@@ -159,21 +162,39 @@ struct SettingsView: View {
                         .foregroundStyle(Theme.muted)
                 }
 
-                Section {
+                DisclosureGroup(isExpanded: $openThreshold) {
                     HStack {
-                        Text("默认提醒线")
+                        Text("低于这个数就提醒")
+                            .font(.system(size: 14))
                         Spacer()
                         TextField("300", value: $draft.threshold, format: .number)
                             .keyboardType(.numberPad)
                             .multilineTextAlignment(.trailing)
+                            .focused($thresholdFocused)
+                            .frame(width: 90)
+                    }
+
+                    HStack {
+                        Spacer()
                         Button {
                             store.settings = draft
                             store.applyDefaultThreshold()
+                            thresholdMessage = store.statusText
+                            UINotificationFeedbackGenerator().notificationOccurred(.success)
+                            thresholdFocused = false
                         } label: {
                             Text("应用").pill(blue: true)
                         }
                         .buttonStyle(.plain)
                     }
+
+                    if !thresholdMessage.isEmpty {
+                        Text(thresholdMessage)
+                            .font(.caption)
+                            .foregroundStyle(Theme.ok)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
                     Button {
                         Notifier.requestPermission()
                         Notifier.test()
@@ -181,11 +202,14 @@ struct SettingsView: View {
                     } label: {
                         Text("测试通知（5 秒后）")
                     }
-                } header: {
-                    Text("补货提醒")
-                } footer: {
-                    Text("出现新的补货款时才提醒；同一批反复刷新不会重复打扰。")
-                        .foregroundStyle(Theme.muted)
+                } label: {
+                    HStack {
+                        Text("补货提醒线")
+                        Spacer()
+                        Text("\(Int(store.settings.threshold))")
+                            .font(.caption)
+                            .foregroundStyle(Theme.muted)
+                    }
                 }
 
                 Section {
@@ -262,6 +286,12 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("设置")
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("完成") { thresholdFocused = false }
+                }
+            }
             .fileImporter(isPresented: $showFolderPicker,
                           allowedContentTypes: [.folder],
                           allowsMultipleSelection: false) { result in
