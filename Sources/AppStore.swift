@@ -601,8 +601,11 @@ final class AppStore: ObservableObject {
                 line.optionIntent = turn.intent
             }
             let wantsImage = effective.contains("图片") || effective.contains("照片")
-            if wantsImage && line.images.isEmpty && line.options.isEmpty {
-                line.text += "\n（图库里没找到这个编号的图，检查设置里的图库文件夹）"
+            if wantsImage && line.options.isEmpty {
+                let missing = missingImageSkus(question: effective)
+                if !missing.isEmpty {
+                    line.text += "\n（图库里没有 \(missing.prefix(4).joined(separator: "、")) 款的图片）"
+                }
             }
             chat.append(line)
             return
@@ -693,6 +696,22 @@ final class AppStore: ObservableObject {
             parts.append("（用户没提具体编号，也没有补货记录）")
         }
         return parts.joined(separator: "\n")
+    }
+
+    /// 这次问到的款里，哪些在图库中没有图片
+    private func missingImageSkus(question: String) -> [String] {
+        var codes = Rules.extractCodes(question)
+        if codes.isEmpty { codes = lastCodes }
+        guard !codes.isEmpty else { return [] }
+
+        var missing: [String] = []
+        for c in codes.prefix(6) {
+            guard let p = Rules.find(c, in: products) else { continue }
+            if library.images(for: p.sku, limit: 1).isEmpty {
+                if !missing.contains(p.sku) { missing.append(p.sku) }
+            }
+        }
+        return missing
     }
 
     /// 什么时候配图，配几张：
