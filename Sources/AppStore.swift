@@ -291,6 +291,18 @@ final class AppStore: ObservableObject {
         }
     }
 
+    /// 改默认提醒线后立刻生效（不用同步表格）
+    func applyDefaultThreshold() {
+        saveSettings()
+        restock = RestockEngine.build(products: products, day: today,
+                                      threshold: settings.threshold,
+                                      acks: Storage.loadAcks())
+        statusText = "默认提醒线改为 \(Int(settings.threshold))，补货 \(restock.count) 个"
+        Notifier.notifyRestockIfNeeded(count: restock.count,
+                                       skus: restock.map { $0.sku },
+                                       detail: restock.map { ($0.sku, $0.prevQty ?? 0, $0.qty ?? 0) })
+    }
+
     /// 重算补货清单（不重新拉表格）
     func refreshRestock() async {
         restock = RestockEngine.build(products: products, day: today,

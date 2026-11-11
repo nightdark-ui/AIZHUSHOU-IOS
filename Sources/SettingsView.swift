@@ -166,6 +166,13 @@ struct SettingsView: View {
                         TextField("300", value: $draft.threshold, format: .number)
                             .keyboardType(.numberPad)
                             .multilineTextAlignment(.trailing)
+                        Button {
+                            store.settings = draft
+                            store.applyDefaultThreshold()
+                        } label: {
+                            Text("应用").pill(blue: true)
+                        }
+                        .buttonStyle(.plain)
                     }
                     Button {
                         Notifier.requestPermission()
