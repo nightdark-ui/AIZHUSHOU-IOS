@@ -222,6 +222,12 @@ struct SettingsView: View {
                 }
 
                 DisclosureGroup(isExpanded: $openPcStatus) {
+                    HStack {
+                        Text(pcStatusText)
+                            .font(.footnote)
+                            .foregroundStyle(pcStatusColor)
+                        Spacer()
+                    }
                     Text(store.lastAcksMessage.isEmpty ? "还没同步过" : store.lastAcksMessage)
                         .font(.footnote)
                         .foregroundStyle(store.lastAcksMessage.hasPrefix("同步成功")
@@ -239,13 +245,7 @@ struct SettingsView: View {
                         Text("立即重试")
                     }
                 } label: {
-                    HStack {
-                        Text("电脑端同步状态")
-                        Spacer()
-                        Text(pcStatusText)
-                            .font(.caption)
-                            .foregroundStyle(pcStatusColor)
-                    }
+                    Text("电脑端同步状态")
                 }
 
                 Section {
