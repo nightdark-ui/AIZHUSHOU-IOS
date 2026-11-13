@@ -123,6 +123,12 @@ enum Rules {
         guard !codes.isEmpty else { return (nil, nil) }
 
         if codes.count >= 2 {
+            // 问价格就只说价格，问库存就只说库存
+            let asksPrice = msg.contains("价") || msg.contains("多少钱")
+            let asksStock = msg.contains("库存") || msg.contains("还有") || msg.contains("剩")
+                || msg.contains("码") || msg.contains("米") || msg.contains("数量")
+            let both = asksPrice && asksStock
+
             var lines: [String] = []
             var missing: [String] = []
             for code in codes {
@@ -130,15 +136,19 @@ enum Rules {
                     if !lines.isEmpty { lines.append("") }
                     let price = p.priceText?.isEmpty == false ? p.priceText! : "未填"
                     lines.append(p.sku)
-                    lines.append("价格 \(price)")
-                    if let q = p.qty {
-                        let raw = (p.qtyText ?? "").trimmingCharacters(in: .whitespaces)
-                        lines.append("库存 \(Int(q)) 码")
-                        if !raw.isEmpty, Double(raw) == nil { lines.append("（\(raw)）") }
-                    } else if let t = p.qtyText, !t.isEmpty {
-                        lines.append("数量算不出来（表格写「\(t)」）")
-                    } else {
-                        lines.append("数量未填")
+                    if asksPrice || both {
+                        lines.append("价格 \(price)")
+                    }
+                    if asksStock || both {
+                        if let q = p.qty {
+                            let raw = (p.qtyText ?? "").trimmingCharacters(in: .whitespaces)
+                            lines.append("库存 \(Int(q)) 码")
+                            if !raw.isEmpty, Double(raw) == nil { lines.append("（\(raw)）") }
+                        } else if let t = p.qtyText, !t.isEmpty {
+                            lines.append("数量算不出来（表格写「\(t)」）")
+                        } else {
+                            lines.append("数量未填")
+                        }
                     }
                 } else {
                     missing.append(code)
