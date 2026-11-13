@@ -30,6 +30,7 @@ struct RootView: View {
         .task { store.launchSync() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
+                store.watchdogSync()
                 store.autoSyncIfNeeded()
                 Task { _ = await store.syncAcks() }
             }
@@ -68,6 +69,7 @@ struct RootView: View {
                 if store.pendingAcks > 0 {
                     _ = await store.syncAcks()
                 }
+                store.watchdogSync()
                 store.periodicSyncIfNeeded()
             }
         }

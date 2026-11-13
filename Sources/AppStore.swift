@@ -10,6 +10,9 @@ final class AppStore: ObservableObject {
     @Published var restock: [RestockItem] = []
     @Published var chat: [ChatLine] = []
     @Published var syncing = false
+    /// 本次同步开始时间（用于超时看门狗）
+    @Published var syncStartedAt: Date?
+    private var syncTask: Task<Void, Never>?
     @Published var thinking = false
     @Published var statusText = "还没同步"
     @Published var history: [HistoryItem] = []
@@ -117,7 +120,11 @@ final class AppStore: ObservableObject {
     func sync(prices: Bool = true) async {
         guard !syncing else { return }
         syncing = true
-        defer { syncing = false }
+        syncStartedAt = Date()
+        defer {
+            syncing = false
+            syncStartedAt = nil
+        }
 
         do {
             var stockRows: [[String: Any]] = []
@@ -237,6 +244,32 @@ final class AppStore: ObservableObject {
         }
     }
 
+    /// 用统一入口启动同步（记住任务句柄，超时能取消）
+    func startSync(prices: Bool) {
+        guard !syncing else { return }
+        syncTask?.cancel()
+        syncTask = Task { await sync(prices: prices) }
+    }
+
+    /// 看门狗：同步卡住超过 90 秒就强制复位并取消
+    func watchdogSync() {
+        guard syncing, let start = syncStartedAt else { return }
+        let elapsed = Date().timeIntervalSince(start)
+        guard elapsed > 90 else { return }
+        syncTask?.cancel()
+        syncTask = nil
+        syncing = false
+        syncStartedAt = nil
+        lastSyncFailed = true
+        statusText = "同步超时已取消（\(Int(elapsed)) 秒），请检查网络后重试"
+    }
+
+    /// 同步已经进行多久（秒），没在同步返回 nil
+    var syncElapsed: Int? {
+        guard syncing, let start = syncStartedAt else { return nil }
+        return max(0, Int(Date().timeIntervalSince(start)))
+    }
+
     /// 冷启动：库存 + 价格都拉（价格 10 分钟内不重复拉）
     func launchSync() {
         guard !syncing, !settings.inventoryToken.isEmpty else { return }
@@ -246,21 +279,21 @@ final class AppStore: ObservableObject {
         } else {
             needPrice = true
         }
-        Task { await sync(prices: needPrice) }
+        startSync(prices: needPrice)
     }
 
     /// 切回前台：只更新库存（5 分钟内不重复）
     func autoSyncIfNeeded() {
         guard !syncing, !settings.inventoryToken.isEmpty else { return }
         if let last = lastSync, Date().timeIntervalSince(last) < 300 { return }
-        Task { await sync(prices: false) }
+        startSync(prices: false)
     }
 
     /// App 一直开着时，每 5 分钟自动拉一次库存
     func periodicSyncIfNeeded() {
         guard !syncing, !settings.inventoryToken.isEmpty else { return }
         if let last = lastSync, Date().timeIntervalSince(last) < 300 { return }
-        Task { await sync(prices: false) }
+        startSync(prices: false)
     }
 
     /// 改单个款的提醒线（nil = 恢复默认）

@@ -78,7 +78,9 @@ struct ChatView: View {
                         } else {
                             MiniClock(size: 9)
                         }
-                        Text(store.syncing ? "同步中…" : store.lastSyncTimeText)
+                        Text(store.syncing
+                             ? "同步中…" + ((store.syncElapsed ?? 0) >= 5 ? "\(store.syncElapsed ?? 0)s" : "")
+                             : store.lastSyncTimeText)
                             .font(.system(size: 11, weight: .medium))
                     }
                     .foregroundStyle(Theme.muted)
