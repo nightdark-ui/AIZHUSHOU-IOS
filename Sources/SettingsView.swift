@@ -228,24 +228,42 @@ struct SettingsView: View {
                             .foregroundStyle(pcStatusColor)
                         Spacer()
                     }
+
+                    Text(store.pendingAcks > 0
+                         ? "\(store.pendingAcks) 条确认在等你推送（只存在手机里，不影响查库存）"
+                         : "没有待推送的确认")
+                        .font(.caption)
+                        .foregroundStyle(store.pendingAcks > 0 ? Theme.warn : Theme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+
                     Text(store.lastAcksMessage.isEmpty ? "还没同步过" : store.lastAcksMessage)
                         .font(.footnote)
                         .foregroundStyle(store.lastAcksMessage.hasPrefix("同步成功")
                                          ? Theme.ok : Theme.muted)
                         .fixedSize(horizontal: false, vertical: true)
-                    if store.pendingAcks > 0 {
-                        Text("还有 \(store.pendingAcks) 条确认没送到电脑")
-                            .font(.caption)
-                            .foregroundStyle(Theme.warn)
-                    }
+
                     Button {
                         store.settings = draft
                         Task { _ = await store.syncAcks() }
                     } label: {
-                        Text("立即重试")
+                        HStack {
+                            Text(store.syncingAcks ? "正在同步…" : "开始同步（推送 + 拉取）")
+                            Spacer()
+                            if store.syncingAcks { ProgressView() }
+                        }
                     }
+                    .disabled(store.syncingAcks)
                 } label: {
-                    Text("电脑端同步状态")
+                    HStack {
+                        Text("电脑端同步状态")
+                        Spacer()
+                        Text("手动")
+                            .font(.caption2)
+                            .foregroundStyle(Theme.muted)
+                    }
+                } footer: {
+                    Text("补货确认只存在手机里：这里的同步只负责把确认推给电脑、把电脑的确认拉回来。和库存/价格表的同步互不影响。")
+                        .foregroundStyle(Theme.muted)
                 }
 
                 Section {

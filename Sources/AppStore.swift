@@ -243,8 +243,9 @@ final class AppStore: ObservableObject {
                                        skus: restock.map { $0.sku },
                                        detail: restock.map { ($0.sku, $0.prevQty ?? 0, $0.qty ?? 0) })
 
-            // 确认推送放后台跑：电脑没开也不会一直转圈
-            Task { _ = await self.syncAcks() }
+            // 电脑推送不在这里做：只刷新本地待推送条数，
+            // 什么时候推由「设置 → 电脑端同步状态」手动触发
+            pendingAcks = Storage.pendingCount()
         } catch {
             lastSyncFailed = true
             statusText = "同步失败：\(error.localizedDescription)"
@@ -360,10 +361,8 @@ final class AppStore: ObservableObject {
         Notifier.notifyRestockIfNeeded(count: restock.count,
                                        skus: restock.map { $0.sku },
                                        detail: restock.map { ($0.sku, $0.prevQty ?? 0, $0.qty ?? 0) })
-        Task {
-            await syncAcks()
-            await loadHistory()
-        }
+        // 确认只记在本地；推送由设置页手动触发
+        Task { await loadHistory() }
     }
 
     // MARK: - 补货历史
@@ -573,7 +572,7 @@ final class AppStore: ObservableObject {
         Notifier.notifyRestockIfNeeded(count: restock.count,
                                        skus: restock.map { $0.sku },
                                        detail: restock.map { ($0.sku, $0.prevQty ?? 0, $0.qty ?? 0) })
-        Task { await syncAcks() }
+        // 推送由设置页手动触发
     }
 
     // MARK: - 对话

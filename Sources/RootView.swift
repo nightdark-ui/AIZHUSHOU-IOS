@@ -32,7 +32,6 @@ struct RootView: View {
             if phase == .active {
                 store.watchdogSync()
                 store.autoSyncIfNeeded()
-                Task { _ = await store.syncAcks() }
             }
         }
         }
@@ -66,9 +65,6 @@ struct RootView: View {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 60_000_000_000)
                 guard scenePhase == .active else { continue }
-                if store.pendingAcks > 0 {
-                    _ = await store.syncAcks()
-                }
                 store.watchdogSync()
                 store.periodicSyncIfNeeded()
             }
