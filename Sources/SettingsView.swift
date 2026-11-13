@@ -253,6 +253,11 @@ struct SettingsView: View {
                         }
                     }
                     .disabled(store.syncingAcks)
+
+                    Text("补货确认只存在手机里：这里的同步只负责把确认推给电脑、把电脑的确认拉回来。和库存/价格表的同步互不影响。")
+                        .font(.caption2)
+                        .foregroundStyle(Theme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
                 } label: {
                     HStack {
                         Text("电脑端同步状态")
@@ -261,9 +266,6 @@ struct SettingsView: View {
                             .font(.caption2)
                             .foregroundStyle(Theme.muted)
                     }
-                } footer: {
-                    Text("补货确认只存在手机里：这里的同步只负责把确认推给电脑、把电脑的确认拉回来。和库存/价格表的同步互不影响。")
-                        .foregroundStyle(Theme.muted)
                 }
 
                 Section {
