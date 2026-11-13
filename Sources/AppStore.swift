@@ -763,9 +763,24 @@ final class AppStore: ObservableObject {
     private func imagesFor(question: String, answer: String) -> [String] {
         guard library.hasFolder else { return [] }
 
-        let wantsImage = question.contains("图") || question.contains("照片")
+        var wantsImage = question.contains("图") || question.contains("照片")
             || question.contains("看看") || question.contains("长什么样")
+
         var codes = Rules.extractCodes(question)
+
+        // 只发了款号（没问价格/库存/别的）→ 当作要全套：价格+库存+图
+        if !codes.isEmpty && !wantsImage {
+            let stripped = question
+                .replacingOccurrences(of: " ", with: "")
+                .replacingOccurrences(of: "，", with: "")
+                .replacingOccurrences(of: ",", with: "")
+            var rest = stripped
+            for c in codes {
+                rest = rest.replacingOccurrences(of: c, with: "")
+            }
+            if rest.isEmpty { wantsImage = true }
+        }
+
         if codes.isEmpty, wantsImage { codes = lastCodes }
         guard !codes.isEmpty else { return [] }
 

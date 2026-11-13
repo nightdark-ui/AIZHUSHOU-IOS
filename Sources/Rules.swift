@@ -214,7 +214,20 @@ enum Rules {
         if asksPrice {
             return ("\(p.sku)  价格 \(price)", nil)
         }
-        return (stockLine(p, wantMeters: wantMeters), nil)
+        if asksStock {
+            return (stockLine(p, wantMeters: wantMeters), nil)
+        }
+
+        // 只发款号：价格 + 库存都答
+        var plain = [p.sku, "价格 \(price)"]
+        if let q = p.qty {
+            let raw = (p.qtyText ?? "").trimmingCharacters(in: .whitespaces)
+            plain.append("库存 \(Int(q)) 码")
+            if !raw.isEmpty, Double(raw) == nil { plain.append("（\(raw)）") }
+        } else {
+            plain.append(stockText(p))
+        }
+        return (plain.joined(separator: "\n") + metersSuffix(p, want: wantMeters), nil)
     }
 
     // MARK: - 编号解析
