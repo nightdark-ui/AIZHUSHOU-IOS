@@ -12,6 +12,8 @@ final class AppStore: ObservableObject {
     @Published var syncing = false
     /// 本次同步开始时间（用于超时看门狗）
     @Published var syncStartedAt: Date?
+    /// 当前在同步什么（库存 / 库存+价格）
+    @Published var syncStage = ""
     private var syncTask: Task<Void, Never>?
     @Published var thinking = false
     @Published var statusText = "还没同步"
@@ -121,9 +123,11 @@ final class AppStore: ObservableObject {
         guard !syncing else { return }
         syncing = true
         syncStartedAt = Date()
+        syncStage = prices ? "库存+价格" : "库存"
         defer {
             syncing = false
             syncStartedAt = nil
+            syncStage = ""
         }
 
         do {
@@ -168,6 +172,7 @@ final class AppStore: ObservableObject {
                 stockRows = try await stockTask
             }
 
+            syncStage = "整理数据"
             statusText = "正在整理数据…"
 
             var result: [Product] = []
@@ -237,7 +242,9 @@ final class AppStore: ObservableObject {
             Notifier.notifyRestockIfNeeded(count: restock.count,
                                        skus: restock.map { $0.sku },
                                        detail: restock.map { ($0.sku, $0.prevQty ?? 0, $0.qty ?? 0) })
-            await syncAcks()
+
+            // 确认推送放后台跑：电脑没开也不会一直转圈
+            Task { _ = await self.syncAcks() }
         } catch {
             lastSyncFailed = true
             statusText = "同步失败：\(error.localizedDescription)"

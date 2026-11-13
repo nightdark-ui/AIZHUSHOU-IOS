@@ -65,9 +65,18 @@ struct InventoryView: View {
             .navigationTitle("库存")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Text(store.lastSyncText)
+                    if store.syncing {
+                        HStack(spacing: 4) {
+                            Text("同步\(store.syncStage)…")
+                            if let sec = store.syncElapsed, sec >= 5 { Text("\(sec)s") }
+                        }
                         .font(.caption)
                         .foregroundStyle(Theme.muted)
+                    } else {
+                        Text(store.lastSyncText)
+                            .font(.caption)
+                            .foregroundStyle(Theme.muted)
+                    }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {

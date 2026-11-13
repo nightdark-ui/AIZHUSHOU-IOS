@@ -78,9 +78,7 @@ struct ChatView: View {
                         } else {
                             MiniClock(size: 9)
                         }
-                        Text(store.syncing
-                             ? "同步中…" + ((store.syncElapsed ?? 0) >= 5 ? "\(store.syncElapsed ?? 0)s" : "")
-                             : store.lastSyncTimeText)
+                        Text(store.syncing ? syncingLabel : store.lastSyncTimeText)
                             .font(.system(size: 11, weight: .medium))
                     }
                     .foregroundStyle(Theme.muted)
@@ -164,6 +162,13 @@ struct ChatView: View {
             .clipShape(Capsule())
             .overlay(Capsule().stroke(Theme.line, lineWidth: 1))
         }
+    }
+
+    /// 同步中的说明文字：同步库存+价格…8s
+    private var syncingLabel: String {
+        var text = "同步" + (store.syncStage.isEmpty ? "" : store.syncStage) + "…"
+        if let sec = store.syncElapsed, sec >= 5 { text += "\(sec)s" }
+        return text
     }
 
     private var composer: some View {
