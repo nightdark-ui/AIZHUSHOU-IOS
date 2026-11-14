@@ -129,6 +129,39 @@ struct Storage {
 
     // MARK: - 备份恢复
 
+    // MARK: - 本地补货历史（确认后就记一笔，不依赖电脑）
+
+    private static var historyURL: URL { url("ack_history.json") }
+
+    static func loadLocalHistory() -> [HistoryItem] {
+        guard let data = try? Data(contentsOf: historyURL),
+              let list = try? JSONDecoder().decode([HistoryItem].self, from: data) else { return [] }
+        return list
+    }
+
+    static func appendLocalHistory(_ items: [HistoryItem]) {
+        guard !items.isEmpty else { return }
+        var list = loadLocalHistory()
+        for item in items {
+            if let idx = list.firstIndex(where: { $0.sku == item.sku && $0.ackDate == item.ackDate }) {
+                list[idx] = item
+            } else {
+                list.append(item)
+            }
+        }
+        // 只留最近 500 条
+        if list.count > 500 { list = Array(list.suffix(500)) }
+        if let data = try? JSONEncoder().encode(list) {
+            try? data.write(to: historyURL, options: .atomic)
+        }
+    }
+
+    static func restoreLocalHistory(_ list: [HistoryItem]) {
+        if let data = try? JSONEncoder().encode(list) {
+            try? data.write(to: historyURL, options: .atomic)
+        }
+    }
+
     static func restoreSnapshots(_ dict: [String: [String: Double]]) {
         guard !dict.isEmpty else { return }
         if let data = try? JSONEncoder().encode(dict) {

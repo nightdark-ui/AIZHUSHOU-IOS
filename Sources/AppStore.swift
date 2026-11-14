@@ -44,6 +44,7 @@ final class AppStore: ObservableObject {
         Notifier.requestPermission()
         if library.hasFolder { Task { await library.rebuild() } }
         pendingAcks = Storage.pendingCount()
+        history = Storage.loadLocalHistory()
         libraryCancellable = library.objectWillChange.sink { [weak self] _ in
             self?.objectWillChange.send()
         }
@@ -356,6 +357,7 @@ final class AppStore: ObservableObject {
     func ack(_ item: RestockItem) {
         let key = Storage.ackKey(sku: item.sku, prevDate: item.prevDate, qty: item.qty)
         Storage.addAck(key)
+        Storage.appendLocalHistory([historyItem(from: item)])
         restock.removeAll { $0.sku == item.sku }
         pendingAcks = Storage.pendingCount()
         Notifier.notifyRestockIfNeeded(count: restock.count,
@@ -365,20 +367,61 @@ final class AppStore: ObservableObject {
         Task { await loadHistory() }
     }
 
+    /// 把一条补货记录转成历史条目（存在手机本地）
+    private func historyItem(from item: RestockItem) -> HistoryItem {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        return HistoryItem(sku: item.sku,
+                           ackDate: today,
+                           ackAt: formatter.string(from: Date()),
+                           qty: item.qty,
+                           prevQty: item.prevQty)
+    }
+
     // MARK: - 补货历史
 
     func loadHistory() async {
         let base = settings.pcBaseURL.trimmingCharacters(in: .whitespaces)
         let key = settings.syncKey.trimmingCharacters(in: .whitespaces)
-        guard !base.isEmpty, !key.isEmpty else { return }
+
+        // 没配电脑：先给本机历史
+        guard !base.isEmpty, !key.isEmpty else {
+            history = mergeHistory(local: Storage.loadLocalHistory(), remote: [])
+            return
+        }
 
         historyLoading = true
         defer { historyLoading = false }
         do {
             let rows = try await SyncClient.history(base: base, key: key)
-            history = rows.compactMap { HistoryItem(row: $0) }
+            let remote = rows.compactMap { HistoryItem(row: $0) }
+            history = mergeHistory(local: Storage.loadLocalHistory(), remote: remote)
         } catch {
+            // 电脑连不上也要能看到本机确认过的记录
+            history = mergeHistory(local: Storage.loadLocalHistory(), remote: [])
             statusText = "拉历史失败：\(error.localizedDescription)"
+        }
+    }
+
+    /// 本机历史 + 电脑历史，按 编号+日期 去重，电脑的优先
+    private func mergeHistory(local: [HistoryItem], remote: [HistoryItem]) -> [HistoryItem] {
+        var seen = Set<String>()
+        var out: [HistoryItem] = []
+        for item in remote {
+            let key = item.ackDate + "|" + item.sku
+            if seen.contains(key) { continue }
+            seen.insert(key)
+            out.append(item)
+        }
+        for item in local {
+            let key = item.ackDate + "|" + item.sku
+            if seen.contains(key) { continue }
+            seen.insert(key)
+            out.append(item)
+        }
+        return out.sorted {
+            if $0.ackDate != $1.ackDate { return $0.ackDate > $1.ackDate }
+            return $0.ackAt > $1.ackAt
         }
     }
 
@@ -564,10 +607,13 @@ final class AppStore: ObservableObject {
     /// 一次确认多条
     func ackMany(_ items: [RestockItem]) {
         guard !items.isEmpty else { return }
+        var records: [HistoryItem] = []
         for item in items {
             let key = Storage.ackKey(sku: item.sku, prevDate: item.prevDate, qty: item.qty)
             Storage.addAck(key)
+            records.append(historyItem(from: item))
         }
+        Storage.appendLocalHistory(records)
         let skus = Set(items.map { $0.sku })
         restock.removeAll { skus.contains($0.sku) }
         pendingAcks = Storage.pendingCount()
