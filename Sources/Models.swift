@@ -37,12 +37,20 @@ struct RestockItem: Codable, Identifiable, Hashable {
 }
 
 /// 补货历史的一条
-struct HistoryItem: Identifiable, Hashable {
+struct HistoryItem: Identifiable, Hashable, Codable {
     var sku: String
     var ackDate: String
     var ackAt: String
     var qty: Double?
     var prevQty: Double?
+
+    init(sku: String, ackDate: String, ackAt: String, qty: Double?, prevQty: Double?) {
+        self.sku = sku
+        self.ackDate = ackDate
+        self.ackAt = ackAt
+        self.qty = qty
+        self.prevQty = prevQty
+    }
 
     var id: String { ackDate + "|" + sku + "|" + ackAt }
 
