@@ -173,14 +173,18 @@ enum Rules {
 
         // 6b. 多种写法 / 前缀多个 → 让用户点选
         let variants = variantList(code, in: products)
-        let asksSpecific = msg.contains("价格") || msg.contains("多少钱") || msg.contains("价")
-            || msg.contains("库存") || msg.contains("还有") || msg.contains("剩")
-            || msg.contains("米") || msg.contains("图片") || msg.contains("照片")
 
-        if variants.count > 1 && !asksSpecific {
+        if variants.count > 1 {
             var turn = RuleTurn(kind: "choose")
             turn.options = variants.prefix(8).map { $0.sku }
-            turn.intent = msg.contains("价格") || msg.contains("多少钱") ? "price" : "stock"
+            if msg.contains("价格") || msg.contains("多少钱") || msg.contains("价") {
+                turn.intent = "price"
+            } else if msg.contains("库存") || msg.contains("还有") || msg.contains("剩")
+                        || msg.contains("码") || msg.contains("米") {
+                turn.intent = "stock"
+            } else {
+                turn.intent = "all"
+            }
             return ("「\(code)」有 \(variants.count) 种写法，点下面选一个：", turn)
         }
 

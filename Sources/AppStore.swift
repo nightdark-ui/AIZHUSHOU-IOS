@@ -408,13 +408,15 @@ final class AppStore: ObservableObject {
 
     /// 点候选编号：带上原来问的意图
     func chooseOption(_ sku: String, intent: String) {
-        let tail: String
         switch intent {
-        case "price": tail = "价格"
-        case "stock": tail = "库存"
-        default: tail = lastIntent == "price" ? "价格" : "库存"
+        case "price":
+            Task { await ask(sku + " 价格") }
+        case "stock":
+            Task { await ask(sku + " 库存") }
+        default:
+            // 没指定问什么：回价格 + 库存 + 图
+            Task { await ask(sku) }
         }
-        Task { await ask(sku + " " + tail) }
     }
 
     // MARK: - 备份 / 恢复
