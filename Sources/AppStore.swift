@@ -453,12 +453,12 @@ final class AppStore: ObservableObject {
     func chooseOption(_ sku: String, intent: String) {
         switch intent {
         case "price":
-            Task { await ask(sku + " 价格") }
+            Task { await ask(sku + " 价格", chosen: sku) }
         case "stock":
-            Task { await ask(sku + " 库存") }
+            Task { await ask(sku + " 库存", chosen: sku) }
         default:
             // 没指定问什么：回价格 + 库存 + 图
-            Task { await ask(sku) }
+            Task { await ask(sku, chosen: sku) }
         }
     }
 
@@ -625,7 +625,7 @@ final class AppStore: ObservableObject {
 
     // MARK: - 对话
 
-    func ask(_ text: String) async {
+    func ask(_ text: String, chosen: String? = nil) async {
         let question = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !question.isEmpty else { return }
 
@@ -668,7 +668,7 @@ final class AppStore: ObservableObject {
         // 先走规则
         let result = Rules.answer(effective, products: products,
                                   restock: restock, threshold: settings.threshold,
-                                  turn: lastTurn)
+                                  turn: lastTurn, chosen: chosen)
         if effective.contains("价格") || effective.contains("多少钱") {
             lastIntent = "price"
         } else if effective.contains("库存") || effective.contains("码") || effective.contains("米") {

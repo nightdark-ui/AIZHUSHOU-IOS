@@ -22,7 +22,8 @@ enum Rules {
                        products: [Product],
                        restock: [RestockItem],
                        threshold: Double,
-                       turn: RuleTurn?) -> (text: String?, turn: RuleTurn?) {
+                       turn: RuleTurn?,
+                       chosen: String? = nil) -> (text: String?, turn: RuleTurn?) {
 
         let msg = normalize(text)
         guard !msg.isEmpty else { return (nil, turn) }
@@ -163,8 +164,8 @@ enum Rules {
             return (out, nil)
         }
 
-        // 6. 单个编号
-        let code = codes[0]
+        // 6. 单个编号（用户点过选项就用他选的那个）
+        let code = chosen ?? codes[0]
 
         // 6a. 编号 + 说明（9005 32梭）
         if let exact = resolveWithSuffix(code: code, message: msg, products: products) {
@@ -174,7 +175,7 @@ enum Rules {
         // 6b. 多种写法 / 前缀多个 → 让用户点选
         let variants = variantList(code, in: products)
 
-        if variants.count > 1 {
+        if variants.count > 1 && chosen == nil {
             var turn = RuleTurn(kind: "choose")
             turn.options = variants.prefix(8).map { $0.sku }
             if msg.contains("价格") || msg.contains("多少钱") || msg.contains("价") {
