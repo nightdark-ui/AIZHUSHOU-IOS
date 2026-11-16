@@ -649,8 +649,8 @@ final class AppStore: ObservableObject {
 
         // 上一轮问过某个编号，这轮只说「价格呢」「库存呢」→ 拼上上次的编号
         var effective = question
-        let intentWords = ["价格", "多少钱", "库存", "还有多少", "剩多少", "有货",
-                           "图片", "照片", "长什么样", "米"]
+        let intentWords = ["价格", "多少钱", "库存", "还有多少", "剩多少", "有多少", "多少",
+                           "有货", "图片", "照片", "长什么样", "米", "码"]
 
         // 没有编号、只说「价格呢」「库存呢」→ 沿用上一条编号
         if Rules.extractCodes(effective).isEmpty, let last = lastSku,
@@ -867,31 +867,53 @@ final class AppStore: ObservableObject {
         return nil
     }
 
+    /// 数量文字 → 数字。支持 80*7、99*3+16、16+80×2、97 128 这类写法
     private func parseNumber(_ text: String?) -> Double? {
-        guard let raw = text?.trimmingCharacters(in: .whitespaces), !raw.isEmpty else { return nil }
+        guard let raw = text?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }
+
         var s = raw
-            .replacingOccurrences(of: "，", with: "+")
-            .replacingOccurrences(of: ",", with: "+")
-            .replacingOccurrences(of: "、", with: "+")
-            .replacingOccurrences(of: "＋", with: "+")
-            .replacingOccurrences(of: "×", with: "*")
-            .replacingOccurrences(of: " ", with: "")
-        if s.hasSuffix("+") { s.removeLast() }
+        s = s.replacingOccurrences(of: "，", with: "+")
+        s = s.replacingOccurrences(of: ",", with: "+")
+        s = s.replacingOccurrences(of: "、", with: "+")
+        s = s.replacingOccurrences(of: "；", with: "+")
+        s = s.replacingOccurrences(of: ";", with: "+")
+        s = s.replacingOccurrences(of: "＋", with: "+")
+        s = s.replacingOccurrences(of: "×", with: "*")
+        s = s.replacingOccurrences(of: "✕", with: "*")
+        s = s.replacingOccurrences(of: "x", with: "*")
+        s = s.replacingOccurrences(of: "X", with: "*")
+        s = s.replacingOccurrences(of: "＊", with: "*")
+
+        // 数字之间的空格当分隔（97 128 → 97+128）
+        s = s.replacingOccurrences(of: "(\\d)\\s+(?=\\d)",
+                                  with: "$1+", options: .regularExpression)
+        // 去掉其余空格和制表
+        s = s.replacingOccurrences(of: " ", with: "")
+        s = s.replacingOccurrences(of: "\t", with: "")
+        s = s.replacingOccurrences(of: "＋", with: "+")
+
+        // 去掉末尾多余的加号
+        while s.hasSuffix("+") { s.removeLast() }
+        guard !s.isEmpty else { return nil }
+
+        // 先整体当数字
         if let v = Double(s) { return v }
 
-        let parts = s.split(separator: "+")
-        if parts.count > 1 {
-            var total: Double = 0
-            for part in parts {
-                if let v = Double(part) { total += v }
-                else if part.contains("*") {
-                    let sub = part.split(separator: "*").compactMap { Double($0) }
-                    if sub.count == 2 { total += sub[0] * sub[1] } else { return nil }
-                } else { return nil }
+        // 按 + 拆项，每项可能是 a*b*c
+        let terms = s.split(separator: "+", omittingEmptySubsequences: true)
+        guard !terms.isEmpty else { return nil }
+        var total: Double = 0
+        for term in terms {
+            let factors = term.split(separator: "*", omittingEmptySubsequences: true)
+            guard !factors.isEmpty else { return nil }
+            var product: Double = 1
+            for f in factors {
+                guard let v = Double(f) else { return nil }
+                product *= v
             }
-            return total
+            total += product
         }
-        return nil
+        return total
     }
 
     private func normalizeQty(_ text: String?) -> Double? {

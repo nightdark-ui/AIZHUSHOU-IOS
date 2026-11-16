@@ -125,9 +125,8 @@ enum Rules {
 
         if codes.count >= 2 {
             // 问价格就只说价格，问库存就只说库存
-            let asksPrice = msg.contains("价") || msg.contains("多少钱")
-            let asksStock = msg.contains("库存") || msg.contains("还有") || msg.contains("剩")
-                || msg.contains("码") || msg.contains("米") || msg.contains("数量")
+            let (asksPrice, asksStockX) = detectIntent(msg)
+            let asksStock = asksStockX
             let both = asksPrice && asksStock
 
             var lines: [String] = []
@@ -200,9 +199,7 @@ enum Rules {
         }
 
         // 6d. 价格 / 库存 / 两者
-        let asksPrice = msg.contains("价格") || msg.contains("多少钱") || msg.contains("价")
-        let asksStock = msg.contains("库存") || msg.contains("还剩") || msg.contains("还有")
-            || msg.contains("够") || msg.contains("码") || msg.contains("米") || msg.contains("几米")
+        let (asksPrice, asksStock) = detectIntent(msg)
         let price = p.priceText?.isEmpty == false ? p.priceText! : "未填"
 
         if asksPrice && asksStock {
@@ -233,6 +230,18 @@ enum Rules {
             plain.append(stockText(p))
         }
         return (plain.joined(separator: "\n") + metersSuffix(p, want: wantMeters), nil)
+    }
+
+    /// 判断这句在问价格、库存还是都问
+    static func detectIntent(_ msg: String) -> (price: Bool, stock: Bool) {
+        let price = msg.contains("价格") || msg.contains("多少钱") || msg.contains("几块")
+            || msg.contains("价位") || msg.contains("单价")
+        var stock = msg.contains("库存") || msg.contains("还有") || msg.contains("剩")
+            || msg.contains("码") || msg.contains("米") || msg.contains("数量")
+            || msg.contains("够")
+        // 「有多少」「XXX 款 有多少」也算问库存
+        if !price, msg.contains("多少") { stock = true }
+        return (price, stock)
     }
 
     // MARK: - 编号解析
