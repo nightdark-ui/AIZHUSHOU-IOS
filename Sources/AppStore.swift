@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import SwiftUI
+import UIKit
 
 @MainActor
 final class AppStore: ObservableObject {
@@ -482,27 +483,55 @@ final class AppStore: ObservableObject {
     }
 
     /// 从备份文件恢复
+    /// 本机已有的备份文件
+    func localBackups() -> [URL] { Backup.localFiles() }
+
+    /// 从剪贴板里的备份 JSON 恢复
+    func importBackupFromClipboard() {
+        let text = UIPasteboard.general.string ?? ""
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            backupMessage = "剪贴板里没有内容：先把备份 JSON 全选复制"
+            return
+        }
+        do {
+            guard let data = text.data(using: .utf8) else {
+                backupMessage = "剪贴板内容读不出来"
+                return
+            }
+            let pack = try Backup.load(data: data)
+            apply(pack)
+            backupMessage = "恢复成功：\(pack.snapshots.count) 天快照，\(pack.acks.count) 条确认"
+        } catch {
+            backupMessage = "恢复失败：剪贴板不是有效的备份文件（\(error.localizedDescription)）"
+        }
+    }
+
     func importBackup(from url: URL) {
         do {
             let pack = try Backup.load(from: url)
-            settings = pack.settings
-            saveSettings()
-            Storage.restoreSnapshots(pack.snapshots)
-            Storage.restoreAcks(pack.acks)
-            Storage.restorePushed(pack.pushed)
-
-            products = Storage.loadProducts()
-            restock = RestockEngine.build(products: products, day: today,
-                                          threshold: settings.threshold,
-                                          acks: Storage.loadAcks())
-            pendingAcks = Storage.pendingCount()
-            lastSyncFailed = false
-            syncWarning = ""
-            statusText = "已从备份恢复（\(pack.createdAt)）"
+            apply(pack)
             backupMessage = "恢复成功：\(pack.snapshots.count) 天快照，\(pack.acks.count) 条确认"
         } catch {
             backupMessage = "恢复失败：\(error.localizedDescription)"
         }
+    }
+
+    /// 真正的恢复动作
+    private func apply(_ pack: BackupFile) {
+        settings = pack.settings
+        saveSettings()
+        Storage.restoreSnapshots(pack.snapshots)
+        Storage.restoreAcks(pack.acks)
+        Storage.restorePushed(pack.pushed)
+
+        products = Storage.loadProducts()
+        restock = RestockEngine.build(products: products, day: today,
+                                      threshold: settings.threshold,
+                                      acks: Storage.loadAcks())
+        pendingAcks = Storage.pendingCount()
+        lastSyncFailed = false
+        syncWarning = ""
+        statusText = "已从备份恢复（\(pack.createdAt)）"
     }
 
     // MARK: - 和电脑双向同步

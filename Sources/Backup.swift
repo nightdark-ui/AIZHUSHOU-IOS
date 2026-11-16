@@ -55,6 +55,27 @@ enum Backup {
         return try JSONDecoder().decode(BackupFile.self, from: data)
     }
 
+    /// 从内存数据解析（剪贴板 / 已复制到本机的文件）
+    static func load(data: Data) throws -> BackupFile {
+        try JSONDecoder().decode(BackupFile.self, from: data)
+    }
+
+    /// 本机 Documents 里已有的备份文件（最新的在前）
+    static func localFiles() -> [URL] {
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: dir, includingPropertiesForKeys: [.contentModificationDateKey]) else { return [] }
+        return files
+            .filter { $0.pathExtension.lowercased() == "json"
+                      && ($0.lastPathComponent.hasPrefix("AI小助手备份")
+                          || $0.lastPathComponent.lowercased().contains("backup")
+                          || $0.lastPathComponent.contains("备份")) }
+            .sorted { a, b in
+                let da = (try? a.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                let db = (try? b.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                return da > db
+            }
+    }
+
     /// 清掉旧备份，只留最近 3 个
     static func cleanupOld() {
         guard let files = try? FileManager.default.contentsOfDirectory(at: dir,
