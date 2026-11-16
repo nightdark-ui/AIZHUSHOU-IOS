@@ -46,6 +46,11 @@ final class AppStore: ObservableObject {
         if library.hasFolder { Task { await library.rebuild() } }
         pendingAcks = Storage.pendingCount()
         history = Storage.loadLocalHistory()
+
+        // 图库已经在 App 目录里就直接用，不用再选
+        if !library.hasFolder {
+            _ = library.useDocumentsFolder()
+        }
         libraryCancellable = library.objectWillChange.sink { [weak self] _ in
             self?.objectWillChange.send()
         }
