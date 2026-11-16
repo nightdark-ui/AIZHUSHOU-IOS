@@ -281,29 +281,7 @@ struct SettingsView: View {
                     Button {
                         showImport = true
                     } label: {
-                        Text("从备份恢复（选文件）")
-                    }
-
-                    Button {
-                        store.importBackupFromClipboard()
-                    } label: {
-                        Text("从剪贴板恢复（粘贴 JSON）")
-                    }
-
-                    let locals = store.localBackups()
-                    if !locals.isEmpty {
-                        ForEach(locals.prefix(3), id: \.self) { url in
-                            Button {
-                                store.importBackup(from: url)
-                            } label: {
-                                HStack {
-                                    Text("本机：" + url.lastPathComponent)
-                                        .font(.system(size: 13))
-                                    Spacer()
-                                    Text("恢复").font(.caption).foregroundStyle(Theme.brand)
-                                }
-                            }
-                        }
+                        Text("从备份恢复")
                     }
 
                     if !store.backupMessage.isEmpty {
@@ -356,13 +334,10 @@ struct SettingsView: View {
                 }
             }
             .fileImporter(isPresented: $showImport,
-                          allowedContentTypes: [.json, .data, .text, .item],
+                          allowedContentTypes: [.json],
                           allowsMultipleSelection: false) { result in
-                switch result {
-                case .success(let urls):
-                    if let url = urls.first { store.importBackup(from: url) }
-                case .failure(let error):
-                    store.backupMessage = "打开文件失败：\(error.localizedDescription)"
+                if case .success(let urls) = result, let url = urls.first {
+                    store.importBackup(from: url)
                 }
             }
             .onAppear { draft = store.settings }
