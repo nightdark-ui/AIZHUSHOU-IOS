@@ -123,31 +123,6 @@ struct SettingsView: View {
                     } label: {
                         Text(store.library.hasFolder ? "重新选择文件夹" : "选择图库文件夹")
                     }
-
-                    // 选不了文件夹时的备用方案：把图库放进 App 目录
-                    let docsLibs = ImageLibrary.documentsCandidates()
-                    if !docsLibs.isEmpty {
-                        ForEach(docsLibs.prefix(3), id: \.self) { url in
-                            Button {
-                                if store.library.useDocumentsFolder(url) {
-                                    rebuildNote = "已使用 App 目录：\(url.lastPathComponent)"
-                                } else {
-                                    rebuildNote = store.library.errorText
-                                }
-                            } label: {
-                                HStack {
-                                    Text("用 App 目录里的：" + url.lastPathComponent)
-                                        .font(.system(size: 13))
-                                    Spacer()
-                                    Text("使用").font(.caption).foregroundStyle(Theme.brand)
-                                }
-                            }
-                        }
-                    } else {
-                        Text("选不了文件夹时：用「文件」App 把图库文件夹拷到「我的 iPhone → AI小助手」，这里会出现按钮")
-                            .font(.caption2)
-                            .foregroundStyle(Theme.muted)
-                    }
                     if store.library.hasFolder {
                         Button {
                             rebuildNote = "正在重建索引…"
@@ -362,11 +337,8 @@ struct SettingsView: View {
             .fileImporter(isPresented: $showFolderPicker,
                           allowedContentTypes: [.folder],
                           allowsMultipleSelection: false) { result in
-                switch result {
-                case .success(let urls):
-                    if let url = urls.first { store.library.setFolder(url) }
-                case .failure(let error):
-                    store.library.errorText = "选文件夹失败：\(error.localizedDescription)"
+                if case .success(let urls) = result, let url = urls.first {
+                    store.library.setFolder(url)
                 }
             }
             .alert("通知已发送", isPresented: $showTestAlert) {

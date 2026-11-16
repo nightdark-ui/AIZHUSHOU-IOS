@@ -51,56 +51,6 @@ final class ImageLibrary: ObservableObject {
         }
     }
 
-    /// App 自己的 Documents 里如果放了图库文件夹，直接用它（不用系统选择器）
-    static func documentsCandidates() -> [URL] {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        guard let items = try? FileManager.default.contentsOfDirectory(
-            at: docs, includingPropertiesForKeys: [.isDirectoryKey]) else { return [] }
-
-        var out: [URL] = []
-        for item in items {
-            var isDir: ObjCBool = false
-            guard FileManager.default.fileExists(atPath: item.path, isDirectory: &isDir),
-                  isDir.boolValue else { continue }
-            let hasCodes = FileManager.default.fileExists(
-                atPath: item.appendingPathComponent("codes.json").path)
-            let hasImages = FileManager.default.fileExists(
-                atPath: item.appendingPathComponent("images").path)
-            let hasAllNew = FileManager.default.fileExists(
-                atPath: item.appendingPathComponent("all-new").path)
-            if hasCodes || hasImages || hasAllNew { out.append(item) }
-        }
-        // 也接受 Documents 根目录本身就是图库
-        if FileManager.default.fileExists(atPath: docs.appendingPathComponent("codes.json").path) {
-            out.append(docs)
-        }
-        return out
-    }
-
-    /// 用 App 目录里的图库（内部目录，不需要安全作用域）
-    @discardableResult
-    func useDocumentsFolder(_ url: URL? = nil) -> Bool {
-        let target = url ?? Self.documentsCandidates().first
-        guard let target else {
-            errorText = "App 目录里没有找到图库文件夹（要有 codes.json 或 images 子目录）"
-            return false
-        }
-        // 内部目录用相对书签，重装后路径不变也有效
-        do {
-            let data = try target.bookmarkData(options: [],
-                                               includingResourceValuesForKeys: nil,
-                                               relativeTo: nil)
-            UserDefaults.standard.set(data, forKey: bookmarkKey)
-            folderName = target.lastPathComponent
-            errorText = ""
-            Task { await rebuild() }
-            return true
-        } catch {
-            errorText = "使用 App 目录失败：\(error.localizedDescription)"
-            return false
-        }
-    }
-
     func folderURL() -> URL? {
         guard let data = UserDefaults.standard.data(forKey: bookmarkKey) else { return nil }
         var stale = false
