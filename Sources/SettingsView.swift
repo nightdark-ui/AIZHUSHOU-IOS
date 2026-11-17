@@ -7,11 +7,9 @@ struct SettingsView: View {
 
     @State private var openInventory = false
     @State private var openPrice = false
-    @State private var openSync = false
     @State private var openAI = false
     @State private var showFolderPicker = false
     @State private var showTestAlert = false
-    @State private var openPcStatus = false
     @State private var openThreshold = false
     @State private var thresholdMessage = ""
     @FocusState private var thresholdFocused: Bool
@@ -19,7 +17,6 @@ struct SettingsView: View {
     @State private var showShare = false
     @State private var showImport = false
     @State private var rebuildNote = ""
-    @State private var snapshotNote = ""
 
     var body: some View {
         NavigationStack {
@@ -43,45 +40,6 @@ struct SettingsView: View {
                         .foregroundStyle(Theme.muted)
                 } label: {
                     label("价格表", detail: draft.priceToken.isEmpty ? "未填令牌" : "已填")
-                }
-
-                // 和电脑同步
-                DisclosureGroup(isExpanded: $openSync) {
-                    TextField("https://chenyegames.ddns.net:5188", text: $draft.pcBaseURL)
-                        .keyboardType(.URL)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                    SecureField("同步密钥", text: $draft.syncKey)
-                    Button {
-                        store.settings = draft
-                        store.saveSettings()
-                        Task { _ = await store.syncAcks() }
-                    } label: {
-                        HStack {
-                            Text("立即同步确认记录")
-                            if store.syncingAcks {
-                                Spacer()
-                                ProgressView().scaleEffect(0.8)
-                            }
-                        }
-                    }
-                    .disabled(store.syncingAcks)
-
-                    if !store.lastAcksMessage.isEmpty {
-                        Text(store.lastAcksMessage)
-                            .font(.caption)
-                            .foregroundStyle(store.lastAcksMessage.hasPrefix("同步成功")
-                                             ? Theme.ok : Theme.danger)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    Text("电脑关机时不影响手机使用，下次连上会自动补上。")
-                        .font(.caption2)
-                        .foregroundStyle(Theme.muted)
-                } label: {
-                    label("和电脑同步", detail: store.pendingAcks > 0
-                          ? "\(store.pendingAcks) 条待推送"
-                          : (draft.syncKey.isEmpty ? "未配置" : "已同步"))
                 }
 
                 // AI
@@ -222,69 +180,6 @@ struct SettingsView: View {
                     }
                 }
 
-                DisclosureGroup(isExpanded: $openPcStatus) {
-                    HStack {
-                        Text(pcStatusText)
-                            .font(.footnote)
-                            .foregroundStyle(pcStatusColor)
-                        Spacer()
-                    }
-
-                    Text(store.pendingAcks > 0
-                         ? "\(store.pendingAcks) 条确认在等你推送（只存在手机里，不影响查库存）"
-                         : "没有待推送的确认")
-                        .font(.caption)
-                        .foregroundStyle(store.pendingAcks > 0 ? Theme.warn : Theme.muted)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Text(store.lastAcksMessage.isEmpty ? "还没同步过" : store.lastAcksMessage)
-                        .font(.footnote)
-                        .foregroundStyle(store.lastAcksMessage.hasPrefix("同步成功")
-                                         ? Theme.ok : Theme.muted)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Button {
-                        Task {
-                            store.settings = draft
-                            snapshotNote = await store.importSnapshotsFromPC(days: 30)
-                        }
-                    } label: {
-                        Text("从电脑补最近 30 天快照")
-                    }
-
-                    if !snapshotNote.isEmpty {
-                        Text(snapshotNote)
-                            .font(.caption)
-                            .foregroundStyle(Theme.ok)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    Button {
-                        store.settings = draft
-                        Task { _ = await store.syncAcks() }
-                    } label: {
-                        HStack {
-                            Text(store.syncingAcks ? "正在同步…" : "开始同步（推送 + 拉取）")
-                            Spacer()
-                            if store.syncingAcks { ProgressView() }
-                        }
-                    }
-                    .disabled(store.syncingAcks)
-
-                    Text("补货确认只存在手机里：这里的同步只负责把确认推给电脑、把电脑的确认拉回来。和库存/价格表的同步互不影响。")
-                        .font(.caption2)
-                        .foregroundStyle(Theme.muted)
-                        .fixedSize(horizontal: false, vertical: true)
-                } label: {
-                    HStack {
-                        Text("电脑端同步状态")
-                        Spacer()
-                        Text("手动")
-                            .font(.caption2)
-                            .foregroundStyle(Theme.muted)
-                    }
-                }
-
                 Section {
                     Button {
                         if let url = store.exportBackup() {
@@ -369,20 +264,6 @@ struct SettingsView: View {
             }
             .onAppear { draft = store.settings }
         }
-    }
-
-    private var pcStatusText: String {
-        if store.pendingAcks > 0 { return "\(store.pendingAcks) 条待推送" }
-        if store.lastAcksMessage.hasPrefix("同步成功") { return "已连接" }
-        if store.lastAcksMessage.hasPrefix("同步失败") { return "未连接" }
-        return "未同步"
-    }
-
-    private var pcStatusColor: Color {
-        if store.pendingAcks > 0 { return Theme.warn }
-        if store.lastAcksMessage.hasPrefix("同步成功") { return Theme.ok }
-        if store.lastAcksMessage.hasPrefix("同步失败") { return Theme.danger }
-        return Theme.muted
     }
 
     private func label(_ title: String, detail: String) -> some View {

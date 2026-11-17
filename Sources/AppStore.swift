@@ -225,11 +225,7 @@ final class AppStore: ObservableObject {
 
             Storage.recordSnapshot(result, day: today)
 
-            // 本地快照太少（重装/换机）→ 找电脑补最近 30 天
-            let snapDays = Storage.loadSnapshots().count
-            if snapDays < 2 {
-                await importSnapshotsFromPC(days: 30)
-            }
+            // 不再依赖电脑：快照由本地每天累积
 
             restock = RestockEngine.build(products: result, day: today,
                                           threshold: settings.threshold,
@@ -327,54 +323,6 @@ final class AppStore: ObservableObject {
 
     /// 从电脑拉最近 N 天快照补本地（重装、换机后恢复补货判断）
     @discardableResult
-    func importSnapshotsFromPC(days: Int = 30) async -> String {
-        let base = settings.pcBaseURL.trimmingCharacters(in: .whitespaces)
-        let key = settings.syncKey.trimmingCharacters(in: .whitespaces)
-        guard !base.isEmpty, !key.isEmpty else { return "还没填电脑地址或同步密钥" }
-
-        do {
-            let remote = try await SyncClient.snapshots(base: base, key: key, days: days)
-            guard !remote.isEmpty else { return "电脑上还没有快照" }
-
-            var snaps = Storage.loadSnapshots()
-            var added = 0
-            for (day, values) in remote where snaps[day] == nil {
-                snaps[day] = values
-                added += 1
-            }
-            Storage.restoreSnapshots(snaps)
-            lastSnapshotSync = Date()
-
-            restock = RestockEngine.build(products: products, day: today,
-                                          threshold: settings.threshold,
-                                          acks: Storage.loadAcks())
-            let msg = added > 0
-                ? "已从电脑补 \(added) 天快照（共 \(snaps.count) 天）"
-                : "快照已是最新（\(snaps.count) 天），无需补"
-            statusText = msg
-            return msg
-        } catch {
-            let msg = "补快照失败：\(error.localizedDescription)"
-            statusText = msg
-            return msg
-        }
-    }
-
-    /// 从电脑补一份基准快照
-    private func importBaselineFromPC() async {
-        let base = settings.pcBaseURL.trimmingCharacters(in: .whitespaces)
-        let key = settings.syncKey.trimmingCharacters(in: .whitespaces)
-        guard !base.isEmpty, !key.isEmpty else { return }
-        do {
-            if let b = try await SyncClient.baseline(base: base, key: key) {
-                Storage.importBaseline(day: b.day, values: b.values)
-                statusText += "（已补基准快照 \(b.day)）"
-            }
-        } catch {
-            // 电脑没开就等下一次
-        }
-    }
-
     /// 改默认提醒线后立刻生效（不用同步表格）
     func applyDefaultThreshold() {
         saveSettings()
@@ -424,48 +372,8 @@ final class AppStore: ObservableObject {
     // MARK: - 补货历史
 
     func loadHistory() async {
-        let base = settings.pcBaseURL.trimmingCharacters(in: .whitespaces)
-        let key = settings.syncKey.trimmingCharacters(in: .whitespaces)
-
-        // 没配电脑：先给本机历史
-        guard !base.isEmpty, !key.isEmpty else {
-            history = mergeHistory(local: Storage.loadLocalHistory(), remote: [])
-            return
-        }
-
-        historyLoading = true
-        defer { historyLoading = false }
-        do {
-            let rows = try await SyncClient.history(base: base, key: key)
-            let remote = rows.compactMap { HistoryItem(row: $0) }
-            history = mergeHistory(local: Storage.loadLocalHistory(), remote: remote)
-        } catch {
-            // 电脑连不上也要能看到本机确认过的记录
-            history = mergeHistory(local: Storage.loadLocalHistory(), remote: [])
-            statusText = "拉历史失败：\(error.localizedDescription)"
-        }
-    }
-
-    /// 本机历史 + 电脑历史，按 编号+日期 去重，电脑的优先
-    private func mergeHistory(local: [HistoryItem], remote: [HistoryItem]) -> [HistoryItem] {
-        var seen = Set<String>()
-        var out: [HistoryItem] = []
-        for item in remote {
-            let key = item.ackDate + "|" + item.sku
-            if seen.contains(key) { continue }
-            seen.insert(key)
-            out.append(item)
-        }
-        for item in local {
-            let key = item.ackDate + "|" + item.sku
-            if seen.contains(key) { continue }
-            seen.insert(key)
-            out.append(item)
-        }
-        return out.sorted {
-            if $0.ackDate != $1.ackDate { return $0.ackDate > $1.ackDate }
-            return $0.ackAt > $1.ackAt
-        }
+        // 只读本机历史（不再连电脑）
+        history = Storage.loadLocalHistory()
     }
 
     // MARK: - 模型状态
