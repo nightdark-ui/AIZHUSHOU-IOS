@@ -19,6 +19,7 @@ struct SettingsView: View {
     @State private var showShare = false
     @State private var showImport = false
     @State private var rebuildNote = ""
+    @State private var snapshotNote = ""
 
     var body: some View {
         NavigationStack {
@@ -241,6 +242,22 @@ struct SettingsView: View {
                         .foregroundStyle(store.lastAcksMessage.hasPrefix("同步成功")
                                          ? Theme.ok : Theme.muted)
                         .fixedSize(horizontal: false, vertical: true)
+
+                    Button {
+                        Task {
+                            store.settings = draft
+                            snapshotNote = await store.importSnapshotsFromPC(days: 30)
+                        }
+                    } label: {
+                        Text("从电脑补最近 30 天快照")
+                    }
+
+                    if !snapshotNote.isEmpty {
+                        Text(snapshotNote)
+                            .font(.caption)
+                            .foregroundStyle(Theme.ok)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
 
                     Button {
                         store.settings = draft

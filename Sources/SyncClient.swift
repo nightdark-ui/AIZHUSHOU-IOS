@@ -79,6 +79,39 @@ struct SyncClient {
         return try decode(data)
     }
 
+    /// 拉电脑端最近 N 天的快照（返回 [日期: [编号: 数量]]）
+    static func snapshots(base: String, key: String, days: Int = 30) async throws -> [String: [String: Double]] {
+        guard let root = normalize(base) else {
+            throw WPSError.badPayload("没填电脑地址")
+        }
+        guard let url = URL(string: root + "/inv/api/sync/snapshots?days=\(days)") else {
+            throw WPSError.badPayload("电脑地址格式不对")
+        }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 45
+        req.setValue(key, forHTTPHeaderField: "X-Sync-Key")
+
+        let data = try await send(req, fallbackHTTP: root)
+        guard let rootObj = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw WPSError.badPayload("电脑返回的不是 JSON")
+        }
+        if let err = rootObj["error"] as? String, !err.isEmpty {
+            throw WPSError.badPayload(err)
+        }
+        guard let raw = rootObj["snapshots"] as? [String: [String: Any]] else {
+            throw WPSError.badPayload("电脑端返回里没有快照")
+        }
+        var out: [String: [String: Double]] = [:]
+        for (day, values) in raw {
+            var item: [String: Double] = [:]
+            for (sku, v) in values {
+                if let n = v as? NSNumber { item[sku] = n.doubleValue }
+            }
+            if !item.isEmpty { out[day] = item }
+        }
+        return out
+    }
+
     static func history(base: String, key: String, days: Int = 30) async throws -> [[String: Any]] {
         guard let root = normalize(base) else {
             throw WPSError.badPayload("没填电脑地址")

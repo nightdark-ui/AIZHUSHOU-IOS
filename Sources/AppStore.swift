@@ -224,9 +224,10 @@ final class AppStore: ObservableObject {
 
             Storage.recordSnapshot(result, day: today)
 
-            // 本地还没有历史快照 → 找电脑要一份，否则永远判不了"库存减少"
-            if Storage.previousSnapshot(before: today) == nil {
-                await importBaselineFromPC()
+            // 本地快照太少（重装/换机）→ 找电脑补最近 30 天
+            let snapDays = Storage.loadSnapshots().count
+            if snapDays < 2 {
+                await importSnapshotsFromPC(days: 30)
             }
 
             restock = RestockEngine.build(products: result, day: today,
@@ -321,6 +322,41 @@ final class AppStore: ObservableObject {
         statusText = value == nil
             ? "\(sku) 已恢复默认提醒线"
             : "\(sku) 提醒线设为 \(Int(value!))"
+    }
+
+    /// 从电脑拉最近 N 天快照补本地（重装、换机后恢复补货判断）
+    @discardableResult
+    func importSnapshotsFromPC(days: Int = 30) async -> String {
+        let base = settings.pcBaseURL.trimmingCharacters(in: .whitespaces)
+        let key = settings.syncKey.trimmingCharacters(in: .whitespaces)
+        guard !base.isEmpty, !key.isEmpty else { return "还没填电脑地址或同步密钥" }
+
+        do {
+            let remote = try await SyncClient.snapshots(base: base, key: key, days: days)
+            guard !remote.isEmpty else { return "电脑上还没有快照" }
+
+            var snaps = Storage.loadSnapshots()
+            var added = 0
+            for (day, values) in remote where snaps[day] == nil {
+                snaps[day] = values
+                added += 1
+            }
+            Storage.restoreSnapshots(snaps)
+            lastSnapshotSync = Date()
+
+            restock = RestockEngine.build(products: products, day: today,
+                                          threshold: settings.threshold,
+                                          acks: Storage.loadAcks())
+            let msg = added > 0
+                ? "已从电脑补 \(added) 天快照（共 \(snaps.count) 天）"
+                : "快照已是最新（\(snaps.count) 天），无需补"
+            statusText = msg
+            return msg
+        } catch {
+            let msg = "补快照失败：\(error.localizedDescription)"
+            statusText = msg
+            return msg
+        }
     }
 
     /// 从电脑补一份基准快照
