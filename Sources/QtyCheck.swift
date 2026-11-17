@@ -55,18 +55,20 @@ enum QtyCheck {
             for term in text.split(separator: "+", omittingEmptySubsequences: true) {
                 let factors = term.split(separator: "*", omittingEmptySubsequences: true)
                 guard !factors.isEmpty else { continue }
-                var product: Double = 1
-                var ok = true
-                for f in factors {
-                    guard let v = Double(f) else { ok = false; break }
-                    product *= v
-                }
-                guard ok else { continue }
 
-                if product > limit {
-                    issues.append(QtyIssue(sku: p.sku, term: String(term), value: product))
-                    break   // 一个款只报一次
+                // 只看单个数字：80*7 是「7 包、每包 80」，不是 560
+                var hit: Double?
+                for f in factors {
+                    guard let v = Double(f) else { continue }
+                    if v > limit {
+                        hit = v
+                        break
+                    }
                 }
+                guard let value = hit else { continue }
+
+                issues.append(QtyIssue(sku: p.sku, term: Self.trimZero(value), value: value))
+                break   // 一个款只报一次
             }
         }
 
@@ -76,5 +78,10 @@ enum QtyCheck {
     /// 某个款有没有问题
     static func issue(for sku: String, in issues: [QtyIssue]) -> QtyIssue? {
         issues.first { $0.sku.uppercased() == sku.uppercased() }
+    }
+
+    /// 97128.0 → "97128"
+    private static func trimZero(_ v: Double) -> String {
+        v == v.rounded() ? "\(Int(v))" : String(format: "%.1f", v)
     }
 }
