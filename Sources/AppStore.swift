@@ -499,28 +499,74 @@ final class AppStore: ObservableObject {
     func importBackup(from url: URL) {
         do {
             let pack = try Backup.load(from: url)
-            settings = pack.settings
-            saveSettings()
-            Storage.restoreSnapshots(pack.snapshots)
-            Storage.restoreAcks(pack.acks)
-            Storage.restorePushed(pack.pushed)
-        if let hist = pack.history, !hist.isEmpty {
-            Storage.restoreLocalHistory(hist)
-            history = hist
-        }
-
-            products = Storage.loadProducts()
-            restock = RestockEngine.build(products: products, day: today,
-                                          threshold: settings.threshold,
-                                          acks: Storage.loadAcks())
-            pendingAcks = Storage.pendingCount()
-            lastSyncFailed = false
-            syncWarning = ""
-            statusText = "已从备份恢复（\(pack.createdAt)）"
-            backupMessage = "恢复成功：\(pack.snapshots.count) 天快照，\(pack.acks.count) 条确认"
+            let summary = apply(pack)
+            backupMessage = "恢复完成：" + summary
         } catch {
             backupMessage = "恢复失败：\(error.localizedDescription)"
         }
+    }
+
+    /// 恢复备份：合并，不覆盖本地更新的数据
+    ///   · 快照：同一天以本地为准，备份里独有的日期补进来
+    ///   · 确认 / 已推送：取并集
+    ///   · 补货历史：按 编号+日期 合并
+    ///   · 最后用当前库存补一份今天的快照，保证对比基准不断档
+    @discardableResult
+    private func apply(_ pack: BackupFile) -> String {
+        settings = pack.settings
+        saveSettings()
+
+        // 快照合并
+        var snapshots = Storage.loadSnapshots()
+        var addedDays = 0
+        for (day, values) in pack.snapshots where snapshots[day] == nil {
+            snapshots[day] = values
+            addedDays += 1
+        }
+        Storage.restoreSnapshots(snapshots)
+
+        // 确认记录合并
+        var acks = Storage.loadAcks()
+        let acksBefore = acks.count
+        for a in pack.acks { acks.insert(a) }
+        Storage.restoreAcks(Array(acks))
+
+        // 已推送标记合并
+        var pushed = Storage.loadPushed()
+        for p in pack.pushed { pushed.insert(p) }
+        Storage.restorePushed(Array(pushed))
+
+        // 补货历史合并
+        var addedHistory = 0
+        if let hist = pack.history, !hist.isEmpty {
+            let before = Storage.loadLocalHistory().count
+            Storage.appendLocalHistory(hist)
+            addedHistory = max(0, Storage.loadLocalHistory().count - before)
+            history = Storage.loadLocalHistory()
+        } else {
+            history = Storage.loadLocalHistory()
+        }
+
+        // 当前库存（本地已有就不动）
+        products = Storage.loadProducts()
+
+        // 补一份今天的快照，避免对比基准停在旧日期
+        if !products.isEmpty {
+            Storage.recordSnapshot(products, day: today)
+        }
+
+        restock = RestockEngine.build(products: products, day: today,
+                                      threshold: settings.threshold,
+                                      acks: Storage.loadAcks())
+        qtyIssues = QtyCheck.analyze(products)
+        pendingAcks = Storage.pendingCount()
+        lastSyncFailed = false
+        syncWarning = ""
+        statusText = "已从备份恢复（\(pack.createdAt)）"
+
+        return "快照 +\(addedDays) 天（本地较新的已保留），"
+            + "确认 +\(acks.count - acksBefore) 条，"
+            + "历史 +\(addedHistory) 条"
     }
 
     // MARK: - 和电脑双向同步
