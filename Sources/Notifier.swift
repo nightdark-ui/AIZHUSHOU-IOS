@@ -67,6 +67,25 @@ enum Notifier {
                                        content: content, trigger: trigger))
     }
 
+    /// 今天没有历史快照，已用当前库存当基准（每天最多提示一次）
+    static func notifyBaselineCreated(count: Int) {
+        let key = "aizhushou.baseline.notified"
+        let today = DateFormatter()
+        today.dateFormat = "yyyy-MM-dd"
+        let day = today.string(from: Date())
+        if UserDefaults.standard.string(forKey: key) == day { return }
+        UserDefaults.standard.set(day, forKey: key)
+
+        let content = UNMutableNotificationContent()
+        content.title = "已记录库存基准"
+        content.body = "今天没有历史快照，已用当前库存（\(count) 个款）作为基准。之后库存下降就会提醒你补货。"
+        content.sound = .default
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 2, repeats: false)
+        UNUserNotificationCenter.current()
+            .add(UNNotificationRequest(identifier: "aizhushou.baseline",
+                                       content: content, trigger: trigger))
+    }
+
     /// 兼容旧调用点
     static func scheduleRestock(count: Int) {
         notifyRestockIfNeeded(count: count)

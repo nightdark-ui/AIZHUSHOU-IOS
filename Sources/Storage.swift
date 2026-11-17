@@ -74,6 +74,30 @@ struct Storage {
     }
 
     /// 今天之前最近一天的快照
+    // MARK: - 今日基准（没有历史快照时，用当天第一次的值当基准）
+
+    private static var baselineURL: URL { url("today_baseline.json") }
+
+    /// 返回 (日期, {编号: 数量})；日期不是今天则视为无效
+    static func todayBaseline(for day: String) -> [String: Double]? {
+        guard let data = try? Data(contentsOf: baselineURL),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let savedDay = obj["day"] as? String, savedDay == day,
+              let values = obj["values"] as? [String: Double] else { return nil }
+        return values
+    }
+
+    /// 记下今天的基准（同一天重复调用不覆盖）
+    static func setTodayBaseline(day: String, values: [String: Double]) -> Bool {
+        if todayBaseline(for: day) != nil { return false }
+        let obj: [String: Any] = ["day": day, "values": values]
+        if let data = try? JSONSerialization.data(withJSONObject: obj) {
+            try? data.write(to: baselineURL, options: .atomic)
+            return true
+        }
+        return false
+    }
+
     static func previousSnapshot(before day: String) -> (date: String, values: [String: Double])? {
         let all = loadSnapshots()
         let earlier = all.keys.filter { $0 < day }.sorted()

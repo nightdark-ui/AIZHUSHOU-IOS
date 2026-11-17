@@ -10,9 +10,18 @@ enum RestockEngine {
     static func build(products: [Product],
                       day: String,
                       threshold: Double,
-                      acks: Set<String>) -> [RestockItem] {
+                      acks: Set<String>,
+                      dayBaseline: [String: Double]? = nil) -> [RestockItem] {
 
-        guard let prev = Storage.previousSnapshot(before: day) else { return [] }
+        // 优先用「今天之前最近的快照」；没有历史时退回「今日基准」（当天第一次的值）
+        let prev: (date: String, values: [String: Double])
+        if let p = Storage.previousSnapshot(before: day) {
+            prev = p
+        } else if let base = dayBaseline, !base.isEmpty {
+            prev = (day, base)
+        } else {
+            return []
+        }
         var out: [RestockItem] = []
 
         for p in products {

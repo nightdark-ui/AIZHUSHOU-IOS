@@ -225,11 +225,24 @@ final class AppStore: ObservableObject {
 
             Storage.recordSnapshot(result, day: today)
 
-            // 不再依赖电脑：快照由本地每天累积
+            // 没有历史快照 → 用当天第一次的库存当基准，这样当天再变化也能提醒
+            var dayBaseline: [String: Double]? = Storage.previousSnapshot(before: today) == nil
+                ? Storage.todayBaseline(for: today)
+                : nil
+            if Storage.previousSnapshot(before: today) == nil, dayBaseline == nil {
+                var snap: [String: Double] = [:]
+                for p in result { if let q = p.qty { snap[p.sku] = q } }
+                if Storage.setTodayBaseline(day: today, values: snap) {
+                    dayBaseline = snap
+                    baselineJustCreated = (day: today, count: snap.count)
+                    Notifier.notifyBaselineCreated(count: snap.count)
+                }
+            }
 
             restock = RestockEngine.build(products: result, day: today,
                                           threshold: settings.threshold,
-                                          acks: Storage.loadAcks())
+                                          acks: Storage.loadAcks(),
+                                          dayBaseline: dayBaseline)
 
             lastSync = Date()
             lastSyncFailed = false
@@ -295,9 +308,10 @@ final class AppStore: ObservableObject {
     }
 
     /// 切回前台：只更新库存（5 分钟内不重复）
+    /// 切回前台：立刻同步（20 秒防抖，避免连点）
     func autoSyncIfNeeded() {
         guard !syncing, !settings.inventoryToken.isEmpty else { return }
-        if let last = lastSync, Date().timeIntervalSince(last) < 300 { return }
+        if let last = lastSync, Date().timeIntervalSince(last) < 20 { return }
         startSync(prices: false)
     }
 
@@ -315,7 +329,8 @@ final class AppStore: ObservableObject {
         Storage.saveProducts(products)
         restock = RestockEngine.build(products: products, day: today,
                                       threshold: settings.threshold,
-                                      acks: Storage.loadAcks())
+                                      acks: Storage.loadAcks(),
+                                      dayBaseline: Storage.todayBaseline(for: today))
         statusText = value == nil
             ? "\(sku) 已恢复默认提醒线"
             : "\(sku) 提醒线设为 \(Int(value!))"
@@ -328,7 +343,8 @@ final class AppStore: ObservableObject {
         saveSettings()
         restock = RestockEngine.build(products: products, day: today,
                                       threshold: settings.threshold,
-                                      acks: Storage.loadAcks())
+                                      acks: Storage.loadAcks(),
+                                      dayBaseline: Storage.todayBaseline(for: today))
         qtyIssues = QtyCheck.analyze(products)
         statusText = "默认提醒线改为 \(Int(settings.threshold))，补货 \(restock.count) 个"
         Notifier.notifyRestockIfNeeded(count: restock.count,
@@ -339,13 +355,15 @@ final class AppStore: ObservableObject {
     /// 有没有可对比的历史快照（没有就说明今天刚装上）
     var hasSnapshotBaseline: Bool {
         Storage.previousSnapshot(before: today) != nil
+            || Storage.todayBaseline(for: today) != nil
     }
 
     /// 重算补货清单（不重新拉表格）
     func refreshRestock() async {
         restock = RestockEngine.build(products: products, day: today,
                                       threshold: settings.threshold,
-                                      acks: Storage.loadAcks())
+                                      acks: Storage.loadAcks(),
+                                      dayBaseline: Storage.todayBaseline(for: today))
     }
 
     // MARK: - 补货确认
@@ -507,7 +525,8 @@ final class AppStore: ObservableObject {
 
         restock = RestockEngine.build(products: products, day: today,
                                       threshold: settings.threshold,
-                                      acks: Storage.loadAcks())
+                                      acks: Storage.loadAcks(),
+                                      dayBaseline: Storage.todayBaseline(for: today))
         qtyIssues = QtyCheck.analyze(products)
         pendingAcks = Storage.pendingCount()
         lastSyncFailed = false

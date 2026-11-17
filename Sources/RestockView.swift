@@ -122,7 +122,7 @@ struct RestockView: View {
                                   ? "先去「设置」同步一次数据"
                                   : (store.hasSnapshotBaseline
                                      ? "库存没有下降，或者都还在提醒线以上"
-                                     : "今天是第一次记录快照，明天开始就能判断\n「昨天 → 今天」谁少了"))
+                                     : "已用当前库存当基准，之后谁少了会立刻提醒"))
             )
         } else {
             List {
