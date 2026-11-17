@@ -9,6 +9,8 @@ struct BackupFile: Codable {
     var acks: [String]
     var pushed: [String]
     var productCount: Int
+    /// 补货历史（老备份里没有这个字段，所以是可选）
+    var history: [HistoryItem]?
 }
 
 enum Backup {
@@ -28,7 +30,8 @@ enum Backup {
                        snapshots: [String: [String: Double]],
                        acks: Set<String>,
                        pushed: Set<String>,
-                       productCount: Int) throws -> URL {
+                       productCount: Int,
+                       history: [HistoryItem] = []) throws -> URL {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd HH:mm:ss"
         let pack = BackupFile(
@@ -37,7 +40,8 @@ enum Backup {
             snapshots: snapshots,
             acks: Array(acks).sorted(),
             pushed: Array(pushed).sorted(),
-            productCount: productCount
+            productCount: productCount,
+            history: history
         )
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]

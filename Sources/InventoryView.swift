@@ -2,6 +2,7 @@ import SwiftUI
 
 struct InventoryView: View {
     @EnvironmentObject private var store: AppStore
+    @State private var showQtyIssues = false
     @State private var keyword = ""
     @State private var editingSKU: String?
     @State private var editingValue = ""
@@ -90,6 +91,31 @@ struct InventoryView: View {
                     }
                     .disabled(store.syncing)
                 }
+            }
+            .safeAreaInset(edge: .top) {
+                if !store.qtyIssues.isEmpty {
+                    Button {
+                        showQtyIssues = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 12))
+                            Text("\(store.qtyIssues.count) 个款单项数量超过 500，点开看")
+                                .font(.system(size: 12))
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 10))
+                        }
+                        .foregroundStyle(Theme.warn)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(Theme.warnSoft)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .sheet(isPresented: $showQtyIssues) {
+                QtyIssuesView()
             }
             .overlay {
                 if store.products.isEmpty && !store.syncing {

@@ -25,6 +25,8 @@ final class AppStore: ObservableObject {
     @Published var backupMessage = ""
     @Published var lastSyncFailed = false
     @Published var syncWarning = ""
+    /// 单项数量超过上限的款（可能是两个数字粘在一起）
+    @Published var qtyIssues: [QtyIssue] = []
     @Published var lastAcksMessage = ""
     let library = ImageLibrary()
     private var libraryCancellable: AnyCancellable?
@@ -46,6 +48,7 @@ final class AppStore: ObservableObject {
         if library.hasFolder { Task { await library.rebuild() } }
         pendingAcks = Storage.pendingCount()
         history = Storage.loadLocalHistory()
+        qtyIssues = QtyCheck.analyze(products)
         libraryCancellable = library.objectWillChange.sink { [weak self] _ in
             self?.objectWillChange.send()
         }
@@ -238,6 +241,7 @@ final class AppStore: ObservableObject {
                 lastPriceSync = Date()
                 UserDefaults.standard.set(lastPriceSync, forKey: lastPriceKey)
             }
+            qtyIssues = QtyCheck.analyze(result)
             statusText = "同步成功：\(result.count) 个款，补货 \(restock.count) 个（\(lastSyncText)）"
                 + (prices ? "" : " · 仅库存")
 
@@ -340,6 +344,7 @@ final class AppStore: ObservableObject {
         restock = RestockEngine.build(products: products, day: today,
                                       threshold: settings.threshold,
                                       acks: Storage.loadAcks())
+        qtyIssues = QtyCheck.analyze(products)
         statusText = "默认提醒线改为 \(Int(settings.threshold))，补货 \(restock.count) 个"
         Notifier.notifyRestockIfNeeded(count: restock.count,
                                        skus: restock.map { $0.sku },
@@ -479,7 +484,8 @@ final class AppStore: ObservableObject {
                                         snapshots: Storage.loadSnapshots(),
                                         acks: Storage.loadAcks(),
                                         pushed: Storage.loadPushed(),
-                                        productCount: products.count)
+                                        productCount: products.count,
+                       history: Storage.loadLocalHistory())
             Backup.cleanupOld()
             backupMessage = "备份已生成：\(url.lastPathComponent)"
             return url
@@ -498,6 +504,10 @@ final class AppStore: ObservableObject {
             Storage.restoreSnapshots(pack.snapshots)
             Storage.restoreAcks(pack.acks)
             Storage.restorePushed(pack.pushed)
+        if let hist = pack.history, !hist.isEmpty {
+            Storage.restoreLocalHistory(hist)
+            history = hist
+        }
 
             products = Storage.loadProducts()
             restock = RestockEngine.build(products: products, day: today,

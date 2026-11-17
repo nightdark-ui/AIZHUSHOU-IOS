@@ -274,7 +274,69 @@ enum Rules {
         s = s.replacingOccurrences(of: "）", with: ")")
         s = s.replacingOccurrences(of: "：", with: ":")
         while s.contains("  ") { s = s.replacingOccurrences(of: "  ", with: " ") }
+        // 中文数字 / 口头读法 → 阿拉伯数字
+        s = convertChineseNumbers(s)
         return s
+    }
+
+    /// 汉字数字 → 阿拉伯数字
+    ///   二零五三 → 2053、幺洞洞八 → 1008、两千零五十三 → 2053、三百 → 300
+    private static let cnDigits: [Character: Int] = [
+        "零": 0, "〇": 0, "洞": 0,
+        "一": 1, "幺": 1,
+        "二": 2, "两": 2,
+        "三": 3, "仨": 3,
+        "四": 4, "五": 5, "六": 6,
+        "七": 7, "拐": 7,
+        "八": 8, "九": 9
+    ]
+    private static let cnUnits: [Character: Int] = ["十": 10, "百": 100, "千": 1000]
+
+    static func convertChineseNumbers(_ text: String) -> String {
+        func isCn(_ c: Character) -> Bool { cnDigits[c] != nil || cnUnits[c] != nil }
+        func parse(_ run: [Character]) -> Int? {
+            guard !run.isEmpty else { return nil }
+            // 全部是数字字：逐位拼（二零五三 → 2053）
+            if run.allSatisfy({ cnDigits[$0] != nil }) {
+                guard run.count >= 2 else { return nil }
+                var v = 0
+                for c in run { v = v * 10 + (cnDigits[c] ?? 0) }
+                return v
+            }
+            // 带单位（十/百/千）：按位累加
+            var section = 0
+            var number = 0
+            for c in run {
+                if let d = cnDigits[c] {
+                    number = d
+                } else if let u = cnUnits[c] {
+                    section += (number == 0 ? 1 : number) * u
+                    number = 0
+                } else {
+                    return nil
+                }
+            }
+            let total = section + number
+            return total > 0 ? total : nil
+        }
+
+        var out = ""
+        var buffer: [Character] = []
+        for ch in text {
+            if isCn(ch) {
+                buffer.append(ch)
+            } else {
+                if !buffer.isEmpty {
+                    if let v = parse(buffer) { out += String(v) } else { out += String(buffer) }
+                    buffer.removeAll()
+                }
+                out.append(ch)
+            }
+        }
+        if !buffer.isEmpty {
+            if let v = parse(buffer) { out += String(v) } else { out += String(buffer) }
+        }
+        return out
     }
 
     /// 句子里像编号的词（已去掉助词、提问词）
