@@ -174,6 +174,7 @@ enum Rules {
         // 6b. 多种写法 / 前缀多个 → 让用户点选
         let variants = variantList(code, in: products)
 
+        // 有两种以上写法 → 一律让用户选（点过就不再问）
         if variants.count > 1 && chosen == nil {
             var turn = RuleTurn(kind: "choose")
             turn.options = variants.prefix(8).map { $0.sku }
@@ -193,9 +194,15 @@ enum Rules {
             return ("没找到「\(code)」。可以说完整编号（比如 2002），或者问「2001-2010 库存」。", nil)
         }
 
+        // 还有别的写法时，末尾提一句
+        let others = variants.count > 1
+            ? variants.filter { $0.sku.uppercased() != p.sku.uppercased() }.map { $0.sku }
+            : []
+        let otherHint = others.isEmpty ? "" : "\n（另有：\(others.prefix(4).joined(separator: "、"))）"
+
         // 6c. 图片
         if msg.contains("图片") || msg.contains("照片") || msg.contains("长什么样") {
-            return ("\(p.sku) 的图片：", nil)
+            return ("\(p.sku) 的图片：" + otherHint, nil)
         }
 
         // 6d. 价格 / 库存 / 两者
@@ -211,13 +218,13 @@ enum Rules {
             } else {
                 lines.append(stockText(p))
             }
-            return (lines.joined(separator: "\n") + metersSuffix(p, want: wantMeters), nil)
+            return (lines.joined(separator: "\n") + metersSuffix(p, want: wantMeters) + otherHint, nil)
         }
         if asksPrice {
-            return ("\(p.sku)  价格 \(price)", nil)
+            return ("\(p.sku)  价格 \(price)" + otherHint, nil)
         }
         if asksStock {
-            return (stockLine(p, wantMeters: wantMeters), nil)
+            return (stockLine(p, wantMeters: wantMeters) + otherHint, nil)
         }
 
         // 只发款号：价格 + 库存都答
@@ -229,7 +236,7 @@ enum Rules {
         } else {
             plain.append(stockText(p))
         }
-        return (plain.joined(separator: "\n") + metersSuffix(p, want: wantMeters), nil)
+        return (plain.joined(separator: "\n") + metersSuffix(p, want: wantMeters) + otherHint, nil)
     }
 
     /// 判断这句在问价格、库存还是都问

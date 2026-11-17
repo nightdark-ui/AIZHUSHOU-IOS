@@ -299,6 +299,44 @@ struct SettingsView: View {
                         .foregroundStyle(Theme.muted)
                 }
 
+                Section {
+                    HStack {
+                        Text("版本")
+                        Spacer()
+                        Text(AppInfo.versionText)
+                            .font(.caption)
+                            .foregroundStyle(Theme.muted)
+                    }
+                    HStack {
+                        Text("图库")
+                        Spacer()
+                        Text(store.library.hasFolder
+                             ? "\(store.library.fileCount) 张\(store.library.mapped ? " · 已读映射" : "")"
+                             : "未选")
+                            .font(.caption)
+                            .foregroundStyle(Theme.muted)
+                    }
+                    HStack {
+                        Text("编译时间")
+                        Spacer()
+                        Text(AppInfo.buildTime)
+                            .font(.caption)
+                            .foregroundStyle(Theme.muted)
+                    }
+                    HStack {
+                        Text("款数")
+                        Spacer()
+                        Text("\(store.products.count)")
+                            .font(.caption)
+                            .foregroundStyle(Theme.muted)
+                    }
+                } header: {
+                    Text("关于")
+                } footer: {
+                    Text("反馈问题时请把版本号一起发我。")
+                        .foregroundStyle(Theme.muted)
+                }
+
                 Section("状态") {
                     Text(store.statusText)
                         .font(.footnote)

@@ -15,8 +15,9 @@ targets:
       path: Info.plist
       properties:
         CFBundleDisplayName: AI小助手
-        CFBundleShortVersionString: "0.1.0"
-        CFBundleVersion: "1"
+        CFBundleShortVersionString: "1.9.0"
+        CFBundleVersion: "203"
+        BuildTime: "$(BUILD_TIME)"
         UILaunchScreen:
           UIColorName: LaunchBackground
         UIUserInterfaceStyle: Light

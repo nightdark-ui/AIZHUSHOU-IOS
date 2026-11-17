@@ -35,6 +35,7 @@ final class AppStore: ObservableObject {
     private var lastSku: String?
     private var lastIntent = ""
     private var lastCodes: [String] = []
+    private var lastAskStamp: (text: String, at: Date)?
     private let settingsKey = "aizhushou.settings.v1"
     private let lastSyncKey = "aizhushou.lastsync"
     private let lastPriceKey = "aizhushou.lastprice"
@@ -450,6 +451,13 @@ final class AppStore: ObservableObject {
     }
 
     /// 点候选编号：带上原来问的意图
+    /// 点掉某个候选后，把这条消息的选项清空（防止连点/重复反问）
+    func consumeOptions(lineID: UUID) {
+        guard let idx = chat.firstIndex(where: { $0.id == lineID }) else { return }
+        chat[idx].options = []
+        chat[idx].optionIntent = ""
+    }
+
     func chooseOption(_ sku: String, intent: String) {
         switch intent {
         case "price":
@@ -628,6 +636,12 @@ final class AppStore: ObservableObject {
     func ask(_ text: String, chosen: String? = nil) async {
         let question = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !question.isEmpty else { return }
+
+        // 连点保护：1.2 秒内同样的提问只处理一次
+        let stamp = question + "|" + (chosen ?? "")
+        if let last = lastAskStamp, last.text == stamp,
+           Date().timeIntervalSince(last.at) < 1.2 { return }
+        lastAskStamp = (stamp, Date())
 
         chat.append(ChatLine(role: "user", text: question, mode: ""))
 
