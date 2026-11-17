@@ -336,6 +336,11 @@ final class AppStore: ObservableObject {
                                        detail: restock.map { ($0.sku, $0.prevQty ?? 0, $0.qty ?? 0) })
     }
 
+    /// 有没有可对比的历史快照（没有就说明今天刚装上）
+    var hasSnapshotBaseline: Bool {
+        Storage.previousSnapshot(before: today) != nil
+    }
+
     /// 重算补货清单（不重新拉表格）
     func refreshRestock() async {
         restock = RestockEngine.build(products: products, day: today,

@@ -116,11 +116,13 @@ struct RestockView: View {
     private var pending: some View {
         if store.restock.isEmpty {
             ContentUnavailableView(
-                "现在没有要补的",
-                systemImage: "checkmark.circle",
+                store.hasSnapshotBaseline ? "现在没有要补的" : "还没有对比基准",
+                systemImage: store.hasSnapshotBaseline ? "checkmark.circle" : "clock.badge.questionmark",
                 description: Text(store.products.isEmpty
                                   ? "先去「设置」同步一次数据"
-                                  : "库存没有下降，或者都还在提醒线以上")
+                                  : (store.hasSnapshotBaseline
+                                     ? "库存没有下降，或者都还在提醒线以上"
+                                     : "今天是第一次记录快照，明天开始就能判断\n「昨天 → 今天」谁少了"))
             )
         } else {
             List {
