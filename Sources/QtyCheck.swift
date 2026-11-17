@@ -2,9 +2,11 @@ import Foundation
 
 /// 数量异常检查
 ///   ① 单个批次（某一项）超过上限 → 多半是两个数字粘在一起（97 128 → 97128）
-///   ② 单个批次（某一项）小于下限 → 多半是漏写或写错了（80*8+16+80+80 后面孤零零一个 8）
+///   ② 单个批次（某一项）低于下限 → 多半是漏写或只剩零头
 ///
-/// 注意：`80*7` 是「7 包 × 每包 80」，两项都不违规，不报。
+/// 关键规则：
+///   · `80*7` 是「7 包 × 每包 80」，两个数字都不违规，不报
+///   · 含中文/字母的那一段当说明处理（"1小包没码数" 里的 1 不算数字）
 struct QtyIssue: Identifiable, Hashable {
 
     enum Kind: String {
@@ -34,7 +36,7 @@ struct QtyIssue: Identifiable, Hashable {
             }
             return "单项 \(term) 超过上限"
         case .tooSmall:
-            return "单项 \(term) 小于下限，可能漏写或写错"
+            return "单项 \(term) 低于下限，可能漏写或只剩零头"
         }
     }
 }
@@ -55,58 +57,9 @@ enum QtyCheck {
 
         for p in products {
             guard let raw = p.qtyText?.trimmingCharacters(in: .whitespaces), !raw.isEmpty else { continue }
-
-            var text = raw
-            text = text.replacingOccurrences(of: "，", with: "+")
-            text = text.replacingOccurrences(of: ",", with: "+")
-            text = text.replacingOccurrences(of: "、", with: "+")
-            text = text.replacingOccurrences(of: "；", with: "+")
-            text = text.replacingOccurrences(of: ";", with: "+")
-            text = text.replacingOccurrences(of: "＋", with: "+")
-            text = text.replacingOccurrences(of: "×", with: "*")
-            text = text.replacingOccurrences(of: "✕", with: "*")
-            text = text.replacingOccurrences(of: "x", with: "*")
-            text = text.replacingOccurrences(of: "X", with: "*")
-            text = text.replacingOccurrences(of: " ", with: "")
-
-            // 只看数字开头那一段（后面可能跟着「1小包没码数」这类说明）
-            if let cut = text.firstIndex(where: { $0.isLetter || ($0.unicodeScalars.first.map { $0.value >= 0x4E00 } ?? false) }) {
-                text = String(text[..<cut])
-            }
-            guard !text.isEmpty else { continue }
-
-            var found: QtyIssue?
-
-            for term in text.split(separator: "+", omittingEmptySubsequences: true) {
-                let factors = term.split(separator: "*", omittingEmptySubsequences: true)
-                guard !factors.isEmpty else { continue }
-
-                var values: [Double] = []
-                var ok = true
-                for f in factors {
-                    guard let v = Double(f) else { ok = false; break }
-                    values.append(v)
-                }
-                guard ok, !values.isEmpty else { continue }
-
-                // ① 乘号里的单个数字超上限（80*7 里的 80，不是 560）
-                if let big = values.first(where: { $0 > limit }) {
-                    found = QtyIssue(sku: p.sku, term: trimZero(big), value: big, kind: .tooBig)
-                    break
-                }
-
-                // ② 一整项的总数低于下限（"8"、"32+2" 里的 2）
-                var product: Double = 1
-                for v in values { product *= v }
-                if product > 0, product < minimum {
-                    found = QtyIssue(sku: p.sku, term: trimZero(product), value: product, kind: .tooSmall)
-                    break
-                }
-            }
-
-            if let issue = found, !ignored.contains(issue.ignoreKey) {
-                issues.append(issue)
-            }
+            guard let issue = inspect(sku: p.sku, text: raw, limit: limit, minimum: minimum) else { continue }
+            if ignored.contains(issue.ignoreKey) { continue }
+            issues.append(issue)
         }
 
         return issues.sorted { a, b in
@@ -115,9 +68,70 @@ enum QtyCheck {
         }
     }
 
+    /// 检查单个款的文字
+    static func inspect(sku: String, text: String,
+                        limit: Double = singleLimit,
+                        minimum: Double = singleMin) -> QtyIssue? {
+        // 先按分隔符切段，再逐段判断：
+        // 含中文/字母的段（"1小包没码数"、"8m"）整段当说明跳过
+        var segments = text
+        segments = segments.replacingOccurrences(of: "＋", with: "+")
+        segments = segments.replacingOccurrences(of: "；", with: "+")
+        segments = segments.replacingOccurrences(of: ";", with: "+")
+
+        let pieces = segments.split(whereSeparator: { ch in
+            ch == "+" || ch == "，" || ch == "," || ch == "、" || ch == "＋"
+        })
+
+        for piece in pieces {
+            let seg = piece.trimmingCharacters(in: .whitespaces)
+            guard !seg.isEmpty else { continue }
+
+            // 有中文或字母 → 说明文字，跳过
+            if seg.contains(where: { $0.isLetter || isCJK($0) }) { continue }
+
+            let cleaned = seg
+                .replacingOccurrences(of: "×", with: "*")
+                .replacingOccurrences(of: "✕", with: "*")
+                .replacingOccurrences(of: "x", with: "*")
+                .replacingOccurrences(of: "X", with: "*")
+                .replacingOccurrences(of: " ", with: "")
+
+            let factors = cleaned.split(separator: "*", omittingEmptySubsequences: true)
+            guard !factors.isEmpty else { continue }
+
+            var values: [Double] = []
+            var ok = true
+            for f in factors {
+                guard let v = Double(f) else { ok = false; break }
+                values.append(v)
+            }
+            guard ok, !values.isEmpty else { continue }
+
+            // ① 乘号里单个数字超上限（80*7 里的 80，不是 560）
+            if let big = values.first(where: { $0 > limit }) {
+                return QtyIssue(sku: sku, term: trimZero(big), value: big, kind: .tooBig)
+            }
+
+            // ② 整段总数低于下限
+            var product: Double = 1
+            for v in values { product *= v }
+            if product > 0, product < minimum {
+                return QtyIssue(sku: sku, term: trimZero(product), value: product, kind: .tooSmall)
+            }
+        }
+
+        return nil
+    }
+
     /// 某个款有没有问题
     static func issue(for sku: String, in issues: [QtyIssue]) -> QtyIssue? {
         issues.first { $0.sku.uppercased() == sku.uppercased() }
+    }
+
+    private static func isCJK(_ ch: Character) -> Bool {
+        guard let s = ch.unicodeScalars.first else { return false }
+        return s.value >= 0x4E00 && s.value <= 0x9FA5
     }
 
     /// 97128.0 → "97128"
