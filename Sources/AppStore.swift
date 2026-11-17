@@ -451,11 +451,8 @@ final class AppStore: ObservableObject {
     func exportBackup() -> URL? {
         do {
             let url = try Backup.export(settings: settings,
-                                        snapshots: Storage.loadSnapshots(),
                                         acks: Storage.loadAcks(),
-                                        pushed: Storage.loadPushed(),
-                                        productCount: products.count,
-                       history: Storage.loadLocalHistory())
+                                        products: products)
             Backup.cleanupOld()
             backupMessage = "备份已生成：\(url.lastPathComponent)"
             return url
@@ -483,45 +480,38 @@ final class AppStore: ObservableObject {
     ///   · 最后用当前库存补一份今天的快照，保证对比基准不断档
     @discardableResult
     private func apply(_ pack: BackupFile) -> String {
+        // ① 设置：整体恢复
         settings = pack.settings
         saveSettings()
 
-        // 快照合并
-        var snapshots = Storage.loadSnapshots()
-        var addedDays = 0
-        for (day, values) in pack.snapshots where snapshots[day] == nil {
-            snapshots[day] = values
-            addedDays += 1
-        }
-        Storage.restoreSnapshots(snapshots)
-
-        // 确认记录合并
+        // ② 补货确认：并集（本地已有的不丢）
         var acks = Storage.loadAcks()
         let acksBefore = acks.count
         for a in pack.acks { acks.insert(a) }
         Storage.restoreAcks(Array(acks))
 
-        // 已推送标记合并
-        var pushed = Storage.loadPushed()
-        for p in pack.pushed { pushed.insert(p) }
-        Storage.restorePushed(Array(pushed))
-
-        // 补货历史合并
-        var addedHistory = 0
-        if let hist = pack.history, !hist.isEmpty {
-            let before = Storage.loadLocalHistory().count
-            Storage.appendLocalHistory(hist)
-            addedHistory = max(0, Storage.loadLocalHistory().count - before)
-            history = Storage.loadLocalHistory()
+        // ③ 最后一次库存 + 价格快照
+        var restoredProducts = 0
+        if let saved = pack.products, !saved.isEmpty {
+            // 保留本地手工设过的单款提醒线
+            var minMap: [String: Double] = [:]
+            for p in products { if let m = p.minQty { minMap[p.sku] = m } }
+            var merged = saved
+            for idx in merged.indices {
+                if let m = minMap[merged[idx].sku] { merged[idx].minQty = m }
+            }
+            products = merged
+            Storage.saveProducts(merged)
+            restoredProducts = merged.count
         } else {
-            history = Storage.loadLocalHistory()
+            products = Storage.loadProducts()
         }
 
-        // 当前库存（本地已有就不动）
-        products = Storage.loadProducts()
-
-        // 补一份今天的快照，避免对比基准停在旧日期
+        // ④ 用还原的库存当基准，这样当天再变化也能提醒
         if !products.isEmpty {
+            var snap: [String: Double] = [:]
+            for p in products { if let q = p.qty { snap[p.sku] = q } }
+            Storage.setTodayBaseline(day: today, values: snap)
             Storage.recordSnapshot(products, day: today)
         }
 
@@ -531,13 +521,16 @@ final class AppStore: ObservableObject {
                                       dayBaseline: Storage.todayBaseline(for: today))
         qtyIssues = QtyCheck.analyze(products)
         pendingAcks = Storage.pendingCount()
+        history = Storage.loadLocalHistory()
         lastSyncFailed = false
         syncWarning = ""
         statusText = "已从备份恢复（\(pack.createdAt)）"
 
-        return "快照 +\(addedDays) 天（本地较新的已保留），"
-            + "确认 +\(acks.count - acksBefore) 条，"
-            + "历史 +\(addedHistory) 条"
+        var parts: [String] = []
+        parts.append("设置已恢复")
+        parts.append("确认 +\(acks.count - acksBefore) 条")
+        if restoredProducts > 0 { parts.append("库存 \(restoredProducts) 个款") }
+        return parts.joined(separator: "，")
     }
 
     // MARK: - 和电脑双向同步

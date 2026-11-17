@@ -1,16 +1,22 @@
 import Foundation
 
-/// 备份包：换证书、删了重装时用来恢复
+/// 备份包：只保留「设置 + 补货确认 + 最后一次库存价格快照」
+/// 换证书、删了重装时用来恢复
 struct BackupFile: Codable {
-    var version = 1
+    var version = 2
     var createdAt: String
+    /// 15 项设置（令牌、密钥、提醒线、表头等）
     var settings: AppSettings
-    var snapshots: [String: [String: Double]]
+    /// 补货确认记录（指纹：编号|对比日期|当时数量）
     var acks: [String]
-    var pushed: [String]
-    var productCount: Int
-    /// 补货历史（老备份里没有这个字段，所以是可选）
+    /// 最后一次的库存 + 价格快照（编号、数量、单价、单款提醒线）
+    var products: [Product]?
+
+    // ---- 老备份兼容：这三个字段以前有，读到就忽略 ----
+    var snapshots: [String: [String: Double]]?
+    var pushed: [String]?
     var history: [HistoryItem]?
+    var productCount: Int?
 }
 
 enum Backup {
@@ -25,23 +31,17 @@ enum Backup {
         return "AI小助手备份-\(f.string(from: Date())).json"
     }
 
-    /// 把当前数据打包写成文件，返回路径
+    /// 打包写成文件，返回路径
     static func export(settings: AppSettings,
-                       snapshots: [String: [String: Double]],
                        acks: Set<String>,
-                       pushed: Set<String>,
-                       productCount: Int,
-                       history: [HistoryItem] = []) throws -> URL {
+                       products: [Product]) throws -> URL {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd HH:mm:ss"
         let pack = BackupFile(
             createdAt: f.string(from: Date()),
             settings: settings,
-            snapshots: snapshots,
             acks: Array(acks).sorted(),
-            pushed: Array(pushed).sorted(),
-            productCount: productCount,
-            history: history
+            products: products
         )
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]

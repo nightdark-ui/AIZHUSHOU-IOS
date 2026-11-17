@@ -207,7 +207,7 @@ struct SettingsView: View {
                 } header: {
                     Text("备份与恢复")
                 } footer: {
-                    Text("备份包含：令牌、密钥、每日快照、补货确认。换证书或删了重装后，从这里一键恢复。")
+                    Text("备份只含：15 项设置、补货确认记录、最后一次库存和价格。换证书或删了重装后，从这里恢复；库存明细会以备份里那份为准，之后同步一次即可更新。")
                         .foregroundStyle(Theme.muted)
                 }
 
