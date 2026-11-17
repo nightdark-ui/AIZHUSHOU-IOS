@@ -33,6 +33,8 @@ final class AppStore: ObservableObject {
     @Published var lastSync: Date?
     @Published var lastPriceSync: Date?
     @Published var lastSnapshotSync: Date?
+    /// 刚刚创建今日基准时记一下（页面用来提示）
+    @Published var baselineJustCreated: (day: String, count: Int)?
 
     private var lastTurn: RuleTurn?
     private var lastSku: String?
