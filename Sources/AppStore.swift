@@ -32,6 +32,7 @@ final class AppStore: ObservableObject {
     private var libraryCancellable: AnyCancellable?
     @Published var lastSync: Date?
     @Published var lastPriceSync: Date?
+    @Published var lastSnapshotSync: Date?
 
     private var lastTurn: RuleTurn?
     private var lastSku: String?
