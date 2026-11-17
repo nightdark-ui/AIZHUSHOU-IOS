@@ -51,7 +51,7 @@ final class AppStore: ObservableObject {
         if library.hasFolder { Task { await library.rebuild() } }
         pendingAcks = Storage.pendingCount()
         history = Storage.loadLocalHistory()
-        qtyIssues = QtyCheck.analyze(products)
+        qtyIssues = QtyCheck.analyze(products, ignored: Storage.loadIgnoredQty())
         libraryCancellable = library.objectWillChange.sink { [weak self] _ in
             self?.objectWillChange.send()
         }
@@ -254,7 +254,7 @@ final class AppStore: ObservableObject {
                 lastPriceSync = Date()
                 UserDefaults.standard.set(lastPriceSync, forKey: lastPriceKey)
             }
-            qtyIssues = QtyCheck.analyze(result)
+            qtyIssues = QtyCheck.analyze(result, ignored: Storage.loadIgnoredQty())
             statusText = "同步成功：\(result.count) 个款，补货 \(restock.count) 个（\(lastSyncText)）"
                 + (prices ? "" : " · 仅库存")
 
@@ -347,12 +347,29 @@ final class AppStore: ObservableObject {
                                       threshold: settings.threshold,
                                       acks: Storage.loadAcks(),
                                       dayBaseline: Storage.todayBaseline(for: today))
-        qtyIssues = QtyCheck.analyze(products)
+        qtyIssues = QtyCheck.analyze(products, ignored: Storage.loadIgnoredQty())
         statusText = "默认提醒线改为 \(Int(settings.threshold))，补货 \(restock.count) 个"
         Notifier.notifyRestockIfNeeded(count: restock.count,
                                        skus: restock.map { $0.sku },
                                        detail: restock.map { ($0.sku, $0.prevQty ?? 0, $0.qty ?? 0) })
     }
+
+    /// 忽略一条数量异常（这个款数值再变化前不再报警）
+    func ignoreQtyIssue(_ issue: QtyIssue) {
+        Storage.addIgnoredQty(issue.ignoreKey)
+        qtyIssues = QtyCheck.analyze(products, ignored: Storage.loadIgnoredQty())
+        statusText = "已忽略 \(issue.sku) 的数量异常（数值再变会重新提示）"
+    }
+
+    /// 恢复全部忽略
+    func resetIgnoredQty() {
+        Storage.clearIgnoredQty()
+        qtyIssues = QtyCheck.analyze(products, ignored: Storage.loadIgnoredQty())
+        statusText = "已恢复全部数量异常提示"
+    }
+
+    /// 当前忽略了几条
+    var ignoredQtyCount: Int { Storage.loadIgnoredQty().count }
 
     /// 有没有可对比的历史快照（没有就说明今天刚装上）
     var hasSnapshotBaseline: Bool {
@@ -519,7 +536,7 @@ final class AppStore: ObservableObject {
                                       threshold: settings.threshold,
                                       acks: Storage.loadAcks(),
                                       dayBaseline: Storage.todayBaseline(for: today))
-        qtyIssues = QtyCheck.analyze(products)
+        qtyIssues = QtyCheck.analyze(products, ignored: Storage.loadIgnoredQty())
         pendingAcks = Storage.pendingCount()
         history = Storage.loadLocalHistory()
         lastSyncFailed = false

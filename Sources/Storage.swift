@@ -153,6 +153,28 @@ struct Storage {
 
     // MARK: - 备份恢复
 
+    // MARK: - 数量异常：已忽略的项（款号|类型|数值）
+
+    private static var ignoredQtyURL: URL { url("ignored_qty.json") }
+
+    static func loadIgnoredQty() -> Set<String> {
+        guard let data = try? Data(contentsOf: ignoredQtyURL),
+              let list = try? JSONDecoder().decode([String].self, from: data) else { return [] }
+        return Set(list)
+    }
+
+    static func addIgnoredQty(_ key: String) {
+        var list = loadIgnoredQty()
+        list.insert(key)
+        if let data = try? JSONEncoder().encode(Array(list).sorted()) {
+            try? data.write(to: ignoredQtyURL, options: .atomic)
+        }
+    }
+
+    static func clearIgnoredQty() {
+        try? FileManager.default.removeItem(at: ignoredQtyURL)
+    }
+
     // MARK: - 本地补货历史（确认后就记一笔，不依赖电脑）
 
     private static var historyURL: URL { url("ack_history.json") }
