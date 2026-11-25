@@ -187,21 +187,26 @@ final class AppStore: ObservableObject {
             var seen = Set<String>()
             for row in stockRows {
                 guard let code = pick(row, [settings.fieldCode, "编号", "sku", "code"]) else { continue }
+                // 明显不是款号的行（没货 / 散剪 / 加工费 …）直接跳过
+                if isNotASku(code) { continue }
                 let key = code.uppercased()
                 if seen.contains(key) { continue }
                 seen.insert(key)
 
                 let qtyText = pick(row, [settings.fieldQty, "库存", "数量", "qty"])
-                let qty = normalizeQty(qtyText)
+                // 数量空白 → 当没货（0）；有文字但算不出 → 保持 unknown
+                let qty = normalizeQty(qtyText) ?? ((qtyText ?? "").trimmingCharacters(in: .whitespaces).isEmpty ? 0 : nil)
                 let p = priceMap[key]
                 result.append(Product(sku: code, name: nil,
                                       priceText: p?.0, price: p?.1,
                                       qty: qty, qtyText: qtyText, minQty: nil))
             }
             for (key, value) in priceMap where !seen.contains(key) {
+                if isNotASku(key) { continue }
+                // 只有价格、没有库存行 → 表格里库存是空的，按没货算
                 result.append(Product(sku: key, name: nil,
                                       priceText: value.0, price: value.1,
-                                      qty: nil, qtyText: nil, minQty: nil))
+                                      qty: 0, qtyText: nil, minQty: nil))
             }
 
             // 保留用户手工设过的单款提醒线
@@ -965,6 +970,16 @@ final class AppStore: ObservableObject {
             total += product
         }
         return total
+    }
+
+    /// 明显不是款号的行（表里误写的说明文字）
+    private func isNotASku(_ text: String) -> Bool {
+        let t = text.trimmingCharacters(in: .whitespaces)
+        if t.isEmpty { return true }
+        let junk = ["没货", "无货", "散剪", "剪", "加工费", "加工", "条码", "订货", "定做",
+                    "来布", "费用", "合计", "小计", "备注", "暂无", "售完", "缺货", "底布加工"]
+        for w in junk where t == w || (t.count <= 4 && t.contains(w)) { return true }
+        return false
     }
 
     private func normalizeQty(_ text: String?) -> Double? {

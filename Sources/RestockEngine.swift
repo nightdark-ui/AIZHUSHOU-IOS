@@ -25,10 +25,25 @@ enum RestockEngine {
         var out: [RestockItem] = []
 
         for p in products {
-            guard let qty = p.qty else { continue }          // 算不出数字的这版先跳过
+            guard let qty = p.qty else { continue }          // 有文字但算不出的先跳过
             let limit = p.minQty ?? threshold
             if qty >= limit { continue }
-            guard let prevQty = prev.values[p.sku] else { continue }
+
+            // 上次快照里没有这个款 → 现在没货（0）的也要报「没货了」
+            guard let prevQty = prev.values[p.sku] else {
+                if qty <= 0 {
+                    let key = Storage.ackKey(sku: p.sku, prevDate: prev.date, qty: qty)
+                    if !acks.contains(key) {
+                        out.append(RestockItem(sku: p.sku, level: "danger", qty: qty,
+                                               qtyText: (p.qtyText ?? ""),
+                                               prevQty: 0, prevDate: prev.date,
+                                               change: 0,
+                                               reason: "现在没货（上次快照里没有这个款）",
+                                               openedDay: day))
+                    }
+                }
+                continue
+            }
 
             let change = qty - prevQty
             if change >= 0 { continue }                       // 没减少就不提醒
