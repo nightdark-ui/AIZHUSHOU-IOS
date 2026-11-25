@@ -213,12 +213,26 @@ struct SettingsView: View {
 
                 Section {
                     HStack {
+                        Text("证书剩余")
+                        Spacer()
+                        Text(CertStatus.text)
+                            .font(.caption)
+                            .foregroundStyle(CertStatus.level == 2 ? Theme.danger
+                                             : (CertStatus.level == 1 ? Theme.warn : Theme.muted))
+                    }
+                    HStack {
                         Text("版本")
                         Spacer()
                         Text(AppInfo.versionText)
                             .font(.caption)
                             .foregroundStyle(Theme.muted)
                     }
+                } header: {
+                    Text("运行状态")
+                } footer: {
+                    Text(certFooter)
+                        .foregroundStyle(CertStatus.level == 2 ? Theme.danger
+                                         : (CertStatus.level == 1 ? Theme.warn : Theme.muted))
                 }
 
                 Section("状态") {
@@ -263,6 +277,18 @@ struct SettingsView: View {
                 }
             }
             .onAppear { draft = store.settings }
+        }
+    }
+
+    /// 证书提示文案
+    private var certFooter: String {
+        switch CertStatus.level {
+        case 2:
+            return "证书快到期了：连电脑用签名工具重新签一次（数据不会丢）。"
+        case 1:
+            return "证书 3 天内到期，找个空闲时间重签一次。"
+        default:
+            return "免费签名 7 天有效；重签后这里会重新计时。"
         }
     }
 
