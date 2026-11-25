@@ -13,6 +13,12 @@ enum RestockEngine {
                       acks: Set<String>,
                       dayBaseline: [String: Double]? = nil) -> [RestockItem] {
 
+        // 历史上曾经有过货的款（用于判断"现在没货"是否值得提醒）
+        var everStocked = Set<String>()
+        for (_, values) in Storage.loadSnapshots() {
+            for (sku, q) in values where q > 0 { everStocked.insert(sku) }
+        }
+
         // 优先用「今天之前最近的快照」；没有历史时退回「今日基准」（当天第一次的值）
         let prev: (date: String, values: [String: Double])
         if let p = Storage.previousSnapshot(before: day) {
@@ -29,9 +35,9 @@ enum RestockEngine {
             let limit = p.minQty ?? threshold
             if qty >= limit { continue }
 
-            // 上次快照里没有这个款 → 现在没货（0）的也要报「没货了」
+            // 上次快照里没有这个款 → 只有"以前有货"的才报「没货了」
             guard let prevQty = prev.values[p.sku] else {
-                if qty <= 0 {
+                if qty <= 0, everStocked.contains(p.sku) {
                     let key = Storage.ackKey(sku: p.sku, prevDate: prev.date, qty: qty)
                     if !acks.contains(key) {
                         out.append(RestockItem(sku: p.sku, level: "danger", qty: qty,
