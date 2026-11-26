@@ -774,6 +774,16 @@ final class AppStore: ObservableObject {
             return
         }
 
+        // 只说图片、但完全没有款号也没历史 → 本地回答，不浪费 AI 调用
+        if (question.contains("图片") || question.contains("照片")),
+           Rules.extractCodes(question).isEmpty,
+           lastCodes.isEmpty, lastListSkus.isEmpty {
+            chat.append(ChatLine(role: "assistant",
+                                 text: greet("先告诉我要看哪个款号，比如「2002 图片」，或者先查一批（「9开头 库存800以上的」），再说「图片都给我」。"),
+                                 mode: "rule"))
+            return
+        }
+
         // 上一轮问过某个编号，这轮只说「价格呢」「库存呢」→ 拼上上次的编号
         var effective = question
         let intentWords = ["价格", "多少钱", "库存", "还有多少", "剩多少", "有多少", "多少",
