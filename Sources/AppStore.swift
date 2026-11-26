@@ -697,10 +697,33 @@ final class AppStore: ObservableObject {
 
         chat.append(ChatLine(role: "user", text: question, mode: ""))
 
+        // 「列表给我」「只列表」→ 用上次的款号紧凑重列（不带价格）
+        let wantsListOnly = question.contains("列表")
+            && !question.contains("价格")
+            && Rules.extractCodes(question).isEmpty
+        if wantsListOnly, !lastListSkus.isEmpty {
+            var lines = [greet("这是刚才那 \(lastListSkus.count) 个款：")]
+            for sku in lastListSkus {
+                guard let p = products.first(where: { $0.sku == sku }) else { continue }
+                lines.append("\(p.sku)  \(p.qty.map { "\(Int($0)) 码" } ?? "数量未填")")
+            }
+            var line = ChatLine(role: "assistant", text: lines.joined(separator: "\n"), mode: "rule")
+            line.quickReplies = ["图片都给我"]
+            chat.append(line)
+            return
+        }
+
         // 「全部给我图片」→ 把上一轮列表里的款都发图
         let wantsAllImages = (question.contains("图片") || question.contains("照片"))
             && (question.contains("全部") || question.contains("所有") || question.contains("都要")
                 || question.contains("全都") || question.contains("每个"))
+        if wantsAllImages, lastListSkus.isEmpty {
+            // 上一条回答是 AI 的也支持
+            if let last = chat.last(where: { $0.role == "assistant" }) {
+                let found = skusMentioned(in: last.text)
+                if !found.isEmpty { lastListSkus = found }
+            }
+        }
         if wantsAllImages, !lastListSkus.isEmpty {
             var line = ChatLine(role: "assistant", text: greet("这是刚才列的 \(lastListSkus.count) 个款："), mode: "rule")
             var paths: [String] = []
@@ -858,6 +881,9 @@ final class AppStore: ObservableObject {
             var line = ChatLine(role: "assistant", text: text, mode: "llm")
             line.images = imagesFor(question: question, answer: finalReply)
             chat.append(line)
+            // 记下 AI 回答里出现过的款号（供「图片都给我」「列表给我」）
+            let found = skusMentioned(in: text)
+            if !found.isEmpty { lastListSkus = found }
         } catch {
             let msg: String
             if settings.deepSeekKey.trimmingCharacters(in: .whitespaces).isEmpty {
@@ -946,6 +972,16 @@ final class AppStore: ObservableObject {
             for path in library.images(for: p.sku, limit: limit) where !out.contains(path) {
                 out.append(path)
             }
+        }
+        return out
+    }
+
+    /// 从一段文字里找出真实存在、且确实被提到的款号
+    private func skusMentioned(in text: String) -> [String] {
+        var out: [String] = []
+        for code in Rules.extractCodes(text) {
+            guard let p = Rules.find(code, in: products) else { continue }
+            if !out.contains(p.sku) { out.append(p.sku) }
         }
         return out
     }

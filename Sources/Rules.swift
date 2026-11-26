@@ -413,7 +413,7 @@ enum Rules {
             let after = r.location + r.length
             if after < ns.length {
                 let next = ns.substring(with: NSRange(location: after, length: 1))
-                if ["米", "m", "M", "码"].contains(next) { continue }
+                if ["米", "m", "M", "码", "y", "Y", "元"].contains(next) { continue }
             }
             // 去掉纯数字且太短的
             let digits = token.filter { $0.isNumber }
@@ -814,8 +814,8 @@ enum Rules {
     /// 解析「超过 900」「800 以上」「1000 米左右」这类阈值
     static func parseQtyThreshold(_ msg: String) -> (value: Double, unit: String)? {
         let patterns = [
-            "(?:超过|大于|多于|不少于|至少|达到|有|库存|数量)\\s*(\\d{1,6})\\s*(米|m|M|码|打|包)?",
-            "(\\d{1,6})\\s*(米|m|M|码|打|包)?\\s*(?:以上|起|往上|左右|上下|的有|的款)"
+            "(?:超过|大于|多于|不少于|至少|达到|有|库存|数量)\\s*(\\d{1,6})\\s*(米|m|M|码|y|Y|打|包|元)?",
+            "(\\d{1,6})\\s*(米|m|M|码|y|Y|打|包|元)?\\s*(?:以上|起|往上|左右|上下|的有|的款)"
         ]
         for pat in patterns {
             guard let regex = try? NSRegularExpression(pattern: pat) else { continue }
@@ -1120,6 +1120,9 @@ enum Rules {
         let allowedNums = Set(numbers(in: evidence)).union(numbers(in: question))
         let allowedValues = allowedNums.compactMap { Double($0) }
         var issues: [String] = []
+
+        // 这次没调用工具（AI 直接凭上下文回答）→ 不标注，避免把正常款号全打⚠️
+        if numbers(in: evidence).isEmpty { return (answer, []) }
 
         func allowed(_ token: String) -> Bool {
             if allowedNums.contains(token) { return true }
