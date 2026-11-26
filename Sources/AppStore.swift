@@ -742,6 +742,8 @@ final class AppStore: ObservableObject {
         lastTurn = result.turn
         if let answer = result.text {
             var line = ChatLine(role: "assistant", text: greet(answer), mode: "rule")
+            line.lowConfidence = result.turn?.lowConfidence ?? false
+            line.sourceQuestion = question
             line.images = imagesFor(question: effective, answer: answer)
             if let turn = result.turn, turn.kind == "choose" {
                 line.options = turn.options
@@ -897,6 +899,72 @@ final class AppStore: ObservableObject {
             }
         }
         return out
+    }
+
+    /// 这条规则回答不太确定 → 让 AI 重新答一次（追加在下面）
+    func askAI(for lineID: UUID) {
+        guard let idx = chat.firstIndex(where: { $0.id == lineID }) else { return }
+        let question = chat[idx].sourceQuestion
+        guard !question.isEmpty else { return }
+        guard !chat[idx].aiLoading else { return }
+
+        chat[idx].aiLoading = true
+        Task {
+            let answer = await runAI(question: question)
+            if let i = chat.firstIndex(where: { $0.id == lineID }) {
+                chat[i].aiLoading = false
+            }
+            var line = ChatLine(role: "assistant", text: answer, mode: "llm")
+            line.images = imagesFor(question: question, answer: answer)
+            chat.append(line)
+        }
+    }
+
+    /// 走 AI 拿答案（带工具查库 + 严格校验）
+    private func runAI(question: String) async -> String {
+        let context = buildContext(for: question)
+        do {
+            let (reply, evidence) = try await DeepSeekClient.askWithTools(
+                question: question,
+                key: settings.deepSeekKey,
+                history: chat,
+                base: settings.apiBase,
+                model: settings.apiModel,
+                products: products,
+                restock: restock
+            )
+            var finalReply = reply
+            var finalEvidence = evidence + "\n" + context
+
+            if !Rules.strictCheck(answer: finalReply, evidence: finalEvidence, question: question) {
+                let retry = try? await DeepSeekClient.askWithTools(
+                    question: question,
+                    key: settings.deepSeekKey,
+                    history: chat,
+                    base: settings.apiBase,
+                    model: settings.apiModel,
+                    products: products,
+                    restock: restock,
+                    extraInstruction: "上一次回答里出现了表格数据里没有的数字或编号。这一次只能原样照抄工具返回值，不得推算、不得四舍五入、不得编造。"
+                )
+                if let retry, Rules.strictCheck(answer: retry.text,
+                                                evidence: retry.evidence + "\n" + context,
+                                                question: question) {
+                    finalReply = retry.text
+                    finalEvidence = retry.evidence + "\n" + context
+                }
+            }
+
+            if Rules.strictCheck(answer: finalReply, evidence: finalEvidence, question: question) {
+                return greet(finalReply)
+            }
+            return "主人，AI 这次的回答和表格数据对不上，我已经拦下来了。\n原来的本地结果保留在上面，可以再点一次「问 AI」试试。"
+        } catch {
+            if settings.deepSeekKey.trimmingCharacters(in: .whitespaces).isEmpty {
+                return "主人，问 AI 需要先填 DeepSeek API Key（设置 → AI 对话）。"
+            }
+            return "主人，AI 这次没连上：\(error.localizedDescription)\n本地结果保留在上面。"
+        }
     }
 
     /// 统一称呼：回答开头叫「主人」

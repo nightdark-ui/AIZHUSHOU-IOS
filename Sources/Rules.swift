@@ -11,6 +11,7 @@ struct RuleTurn {
     var prefixes: [String] = []   // 列表筛选用：9开头、1开头
     var lowValue: Double = 0      // 列表筛选下限（码）
     var highValue: Double = 0     // 列表筛选上限（码，0=不限）
+    var lowConfidence = false     // 结果不太确定（筛选/区间/模糊匹配）
 }
 
 /// 本地规则引擎：编号直达、区间、筛选、补货，毫秒级
@@ -86,7 +87,9 @@ enum Rules {
             var lines = ["\(cr.from)–\(cr.to) 共 \(cr.skus.count) 个，符合条件 \(pool.count) 个\(extra)："]
             for p in pool.prefix(40) { lines.append("· \(p.sku)  " + qtyBrief(p)) }
             if pool.count > 40 { lines.append("……还有 \(pool.count - 40) 个") }
-            return (lines.joined(separator: "\n"), nil)
+            var rangeTurn = RuleTurn(kind: "note")
+            rangeTurn.lowConfidence = true
+            return (lines.joined(separator: "\n"), rangeTurn)
         }
 
         // 2. 补货
@@ -206,9 +209,17 @@ enum Rules {
             : []
         let otherHint = others.isEmpty ? "" : "\n（另有：\(others.prefix(4).joined(separator: "、"))）"
 
+        // 编号不是精确命中（靠前缀/包含匹配到的）→ 结果可能不准
+        let exactHit = products.contains { $0.sku.uppercased() == code.uppercased() }
+        var fuzzyTurn: RuleTurn? = exactHit ? nil : {
+            var t = RuleTurn(kind: "note")
+            t.lowConfidence = true
+            return t
+        }()
+
         // 6c. 图片
         if msg.contains("图片") || msg.contains("照片") || msg.contains("长什么样") {
-            return ("\(p.sku) 的图片：" + otherHint, nil)
+            return ("\(p.sku) 的图片：" + otherHint, fuzzyTurn)
         }
 
         // 6d. 价格 / 库存 / 两者
@@ -224,13 +235,13 @@ enum Rules {
             } else {
                 lines.append(stockText(p))
             }
-            return (lines.joined(separator: "\n") + metersSuffix(p, want: wantMeters) + otherHint, nil)
+            return (lines.joined(separator: "\n") + metersSuffix(p, want: wantMeters) + otherHint, fuzzyTurn)
         }
         if asksPrice {
-            return ("\(p.sku)  价格 \(price)" + otherHint, nil)
+            return ("\(p.sku)  价格 \(price)" + otherHint, fuzzyTurn)
         }
         if asksStock {
-            return (stockLine(p, wantMeters: wantMeters) + otherHint, nil)
+            return (stockLine(p, wantMeters: wantMeters) + otherHint, fuzzyTurn)
         }
 
         // 只发款号：价格 + 库存都答
@@ -242,7 +253,7 @@ enum Rules {
         } else {
             plain.append(stockText(p))
         }
-        return (plain.joined(separator: "\n") + metersSuffix(p, want: wantMeters) + otherHint, nil)
+        return (plain.joined(separator: "\n") + metersSuffix(p, want: wantMeters) + otherHint, fuzzyTurn)
     }
 
     /// 判断这句在问价格、库存还是都问
@@ -848,6 +859,7 @@ enum Rules {
         }
 
         var turn = RuleTurn(kind: "qtylist")
+        turn.lowConfidence = true
         turn.prefixes = prefixes
         turn.lowValue = low
         turn.highValue = high
@@ -876,6 +888,7 @@ enum Rules {
         }
         let page = Array(pool.dropFirst(start).prefix(size))
         var next = turn
+        next.lowConfidence = true
         next.shown = start + page.count
 
         var lines = ["接着给 \(page.count) 个（\(start + 1)–\(start + page.count)）："]

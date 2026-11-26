@@ -235,10 +235,49 @@ struct ChatView: View {
                             .stroke(isUser ? Color.clear : Theme.line, lineWidth: 1)
                     )
                 if !isUser && !line.mode.isEmpty {
-                    Text(line.mode == "llm" ? "DeepSeek" : "本地规则")
-                        .font(.system(size: 10))
-                        .foregroundStyle(Theme.muted)
-                        .padding(.leading, 3)
+                    HStack(spacing: 6) {
+                        Text(line.mode == "llm" ? "DeepSeek" : "本地规则")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Theme.muted)
+
+                        // 本地规则回答：低调的「问 AI」
+                        if line.mode == "rule" && !line.sourceQuestion.isEmpty {
+                            if line.aiLoading {
+                                Text("AI 查询中…")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(Theme.muted)
+                            } else {
+                                Text("·")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(Theme.muted)
+                                Button {
+                                    store.askAI(for: line.id)
+                                } label: {
+                                    Text("问 AI")
+                                        .font(.system(size: 10, weight: .medium))
+                                        .foregroundStyle(Theme.brand)
+                                }
+                                .buttonStyle(.plain)
+
+                                // 不太确定的回答，给一个显眼的按钮
+                                if line.lowConfidence {
+                                    Button {
+                                        store.askAI(for: line.id)
+                                    } label: {
+                                        Text("✦ 问 AI")
+                                            .font(.system(size: 10, weight: .semibold))
+                                            .foregroundStyle(Theme.brand)
+                                            .padding(.horizontal, 8)
+                                            .padding(.vertical, 3)
+                                            .background(Theme.brandSoft)
+                                            .clipShape(Capsule())
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
+                    .padding(.leading, 3)
                 }
                 if !line.options.isEmpty {
                     HStack(spacing: 8) {
