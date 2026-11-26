@@ -914,6 +914,8 @@ final class AppStore: ObservableObject {
             if let i = chat.firstIndex(where: { $0.id == lineID }) {
                 chat[i].aiLoading = false
             }
+            // 同样的话不重复堆叠
+            if let last = chat.last, last.text == answer, last.mode == "llm" { return }
             var line = ChatLine(role: "assistant", text: answer, mode: "llm")
             line.images = imagesFor(question: question, answer: answer)
             chat.append(line)

@@ -160,7 +160,8 @@ struct DeepSeekClient {
                 }
                 let result = AITools.run(name: name, arguments: args,
                                          products: products, restock: restock)
-                evidence += result + "\n"
+                // 参数也计入证据：AI 传的筛选阈值（如 984/1202）是合法数字
+                evidence += "参数 " + argText + "\n" + result + "\n"
                 messages.append([
                     "role": "tool",
                     "tool_call_id": (call["id"] as? String) ?? "",

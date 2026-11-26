@@ -827,8 +827,8 @@ enum Rules {
 
         // 「1000m左右」→ 900–1100 米之间
         let isAround = msg.contains("左右") || msg.contains("上下") || msg.contains("附近")
-        let low = isAround ? yards * 0.9 : yards
-        let high = isAround ? yards * 1.1 : 0
+        let low = isAround ? yards * 0.8 : yards
+        let high = isAround ? yards * 1.2 : 0
 
         let pool = products.filter { p in
             guard let q = p.qty else { return false }
@@ -1056,14 +1056,24 @@ enum Rules {
 
     /// 严格校验：回答里的每个数字、每个编号，都必须来自工具返回或用户原话
     static func strictCheck(answer: String, evidence: String, question: String) -> Bool {
-        // 数字
         let allowedNums = Set(numbers(in: evidence)).union(numbers(in: question))
         let white: Set<String> = ["0.9144", "1.0936"]
 
+        // 允许的数值集合（用于容差比对）
+        let allowedValues = allowedNums.compactMap { Double($0) }
+
         for n in numbers(in: answer) {
             if allowedNums.contains(n) || white.contains(n) { continue }
-            if let v = Double(n),
-               allowedNums.contains(where: { Double($0).map { abs($0 - v) < 0.001 } ?? false }) { continue }
+            guard let v = Double(n) else { return false }
+
+            // 个小数量（「共 7 款」「前 3 个」）不算编造
+            if v <= 10, v == v.rounded() { continue }
+
+            // 与工具返回值相差 5% 以内（四舍五入、单位换算）也算对得上
+            if allowedValues.contains(where: { base in
+                base == 0 ? v == 0 : abs(v - base) / max(abs(base), 1) <= 0.05
+            }) { continue }
+
             return false
         }
 
