@@ -847,15 +847,17 @@ final class AppStore: ObservableObject {
                 }
             }
 
-            if Rules.strictCheck(answer: finalReply, evidence: finalEvidence, question: question) {
-                var line = ChatLine(role: "assistant", text: greet(finalReply), mode: "llm")
-                line.images = imagesFor(question: question, answer: finalReply)
-                chat.append(line)
-            } else {
-                chat.append(ChatLine(role: "assistant",
-                                     text: "主人，AI 的回答里出现了表格没有的数字或编号，我已经拦下来了，不会给你错的数据。\n具体编号的库存和价格我都能直接查，你发编号就行。",
-                                     mode: "rule"))
+            let (marked, issues) = Rules.markUnverified(answer: finalReply,
+                                                        evidence: finalEvidence,
+                                                        question: question)
+            var text = greet(marked)
+            if !issues.isEmpty {
+                text += "\n\n⚠️ 上面标 ⚠️ 的 \(issues.count) 处（\(issues.prefix(5).joined(separator: "、"))）"
+                text += "在表格里找不到，可能是 AI 推算的，请核对后再用。"
             }
+            var line = ChatLine(role: "assistant", text: text, mode: "llm")
+            line.images = imagesFor(question: question, answer: finalReply)
+            chat.append(line)
         } catch {
             let msg: String
             if settings.deepSeekKey.trimmingCharacters(in: .whitespaces).isEmpty {
@@ -1004,10 +1006,17 @@ final class AppStore: ObservableObject {
                 }
             }
 
-            if Rules.strictCheck(answer: finalReply, evidence: finalEvidence, question: question) {
-                return greet(finalReply)
+            // 不再整段拦截：对不上的地方打 ⚠️ 标出来，其余照常显示
+            let (marked, issues) = Rules.markUnverified(answer: finalReply,
+                                                        evidence: finalEvidence,
+                                                        question: question)
+            if issues.isEmpty {
+                return greet(marked)
             }
-            return "主人，AI 这次的回答和表格数据对不上，我已经拦下来了。\n原来的本地结果保留在上面，可以再点一次「问 AI」试试。"
+            var out = greet(marked)
+            out += "\n\n⚠️ 上面标 ⚠️ 的 \(issues.count) 处（\(issues.prefix(5).joined(separator: "、"))）"
+            out += "在表格里找不到，可能是 AI 推算的，请核对后再用。"
+            return out
         } catch {
             if settings.deepSeekKey.trimmingCharacters(in: .whitespaces).isEmpty {
                 return "主人，问 AI 需要先填 DeepSeek API Key（设置 → AI 对话）。"

@@ -1097,6 +1097,54 @@ enum Rules {
 
     // MARK: - AI 数字校验
 
+    /// 不拦截，改成「标注」：把对不上的数字/编号打上 ⚠️，其余原样保留
+    /// 返回 (标注后的文本, 有问题的片段)
+    static func markUnverified(answer: String, evidence: String, question: String) -> (text: String, issues: [String]) {
+        let allowedNums = Set(numbers(in: evidence)).union(numbers(in: question))
+        let allowedValues = allowedNums.compactMap { Double($0) }
+        var issues: [String] = []
+
+        func allowed(_ token: String) -> Bool {
+            if allowedNums.contains(token) { return true }
+            guard let v = Double(token) else { return false }
+            if v <= 10, v == v.rounded() { return true }      // 个数/条数
+            return allowedValues.contains { base in
+                base == 0 ? v == 0 : abs(v - base) / max(abs(base), 1) <= 0.05
+            }
+        }
+
+        var text = answer
+
+        // ① 数字
+        if let regex = try? NSRegularExpression(pattern: "\\d+(?:\\.\\d+)?") {
+            let ns = text as NSString
+            let ranges = regex.matches(in: text, range: NSRange(location: 0, length: ns.length)).map { $0.range }
+            for r in ranges.reversed() {
+                let token = ns.substring(with: r)
+                if allowed(token) { continue }
+                issues.append(token)
+                text = (text as NSString).replacingCharacters(in: r, with: "⚠️" + token)
+            }
+        }
+
+        // ② 编号（型号类的，带字母的也算）
+        let knownCodes = Set(extractCodes(evidence).map { $0.uppercased() })
+        let askedCodes = Set(extractCodes(question).map { $0.uppercased() })
+        if let regex = try? NSRegularExpression(pattern: "[A-Za-z]{1,6}\\d{2,6}(?:-\\d{1,3})?") {
+            let ns = text as NSString
+            let ranges = regex.matches(in: text, range: NSRange(location: 0, length: ns.length)).map { $0.range }
+            for r in ranges.reversed() {
+                let token = ns.substring(with: r)
+                let u = token.uppercased()
+                if knownCodes.contains(u) || askedCodes.contains(u) { continue }
+                issues.append(token)
+                text = (text as NSString).replacingCharacters(in: r, with: "⚠️" + token)
+            }
+        }
+
+        return (text, issues)
+    }
+
     /// 严格校验：回答里的每个数字、每个编号，都必须来自工具返回或用户原话
     static func strictCheck(answer: String, evidence: String, question: String) -> Bool {
         let allowedNums = Set(numbers(in: evidence)).union(numbers(in: question))
