@@ -360,6 +360,13 @@ enum Rules {
 
         for r in ranges {
             var token = ns.substring(with: r)
+
+            // 后面紧跟数量单位（米/m/码/元）→ 这是数量，不是款号
+            let after = r.location + r.length
+            if after < ns.length {
+                let next = ns.substring(with: NSRange(location: after, length: 1))
+                if ["米", "m", "M", "码"].contains(next) { continue }
+            }
             // 去掉纯数字且太短的
             let digits = token.filter { $0.isNumber }
             if token.allSatisfy({ $0.isNumber }) && digits.count < 2 { continue }
@@ -732,12 +739,21 @@ enum Rules {
     }
 
     static func prefixFilter(_ msg: String) -> String? {
+        prefixFilters(msg).first
+    }
+
+    /// 「9开头和1开头」→ ["9","1"]
+    static func prefixFilters(_ msg: String) -> [String] {
         let pattern = "(\\d)\\s*开头"
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
         let ns = msg as NSString
-        guard let m = regex.firstMatch(in: msg, range: NSRange(location: 0, length: ns.length)),
-              m.numberOfRanges > 1 else { return nil }
-        return ns.substring(with: m.range(at: 1))
+        var out: [String] = []
+        for m in regex.matches(in: msg, range: NSRange(location: 0, length: ns.length))
+        where m.numberOfRanges > 1 {
+            let s = ns.substring(with: m.range(at: 1))
+            if !out.contains(s) { out.append(s) }
+        }
+        return out
     }
 
     static func isRestockAsk(_ msg: String) -> Bool {
@@ -747,10 +763,16 @@ enum Rules {
     // MARK: - 数量筛选
 
     static func qtyListReply(_ msg: String, products: [Product]) -> String? {
-        // 有具体编号的，交给"够不够"处理，不算筛选
-        if let c = extractCodes(msg).first, resolve(c, in: products) != nil { return nil }
+        // 明显的列表问法，即使里面有像编号的片段（1000m、2002）也当筛选处理
+        let listIntent = msg.contains("哪些") || msg.contains("那些") || msg.contains("列表")
+            || msg.contains("以上") || msg.contains("超过") || msg.contains("大于")
+            || msg.contains("少于") || msg.contains("以下")
 
-        let prefix = prefixFilter(msg)
+        // 有具体编号、且不是列表问法 → 交给单款逻辑
+        if !listIntent, let c = extractCodes(msg).first, resolve(c, in: products) != nil { return nil }
+
+        let prefixes = prefixFilters(msg)
+        let prefix = prefixes.first
         let wantsList = msg.contains("哪些") || msg.contains("那些") || msg.contains("有没")
             || msg.contains("哪些款") || msg.contains("的款") || msg.contains("的花")
             || msg.contains("的有") || msg.contains("有的")
@@ -785,14 +807,18 @@ enum Rules {
         let pool = products.filter { p in
             guard let q = p.qty else { return false }
             if q < yards { return false }
-            if let pre = prefix, !p.sku.hasPrefix(pre) { return false }
+            if !prefixes.isEmpty {
+                var ok = false
+                for pre in prefixes where p.sku.hasPrefix(pre) { ok = true; break }
+                if !ok { return false }
+            }
             return true
         }.sorted { ($0.qty ?? 0) > ($1.qty ?? 0) }
 
         let unitText = (unit == "米" || unit == "m")
             ? "\(intText(raw)) 米（约 \(Int(yards)) 码）"
             : "\(intText(raw)) 码"
-        let prefixText = prefix.map { "\($0) 开头的" } ?? ""
+        let prefixText = prefixes.isEmpty ? "" : prefixes.map { "\($0) 开头" }.joined(separator: "或") + "的"
 
         guard !pool.isEmpty else { return "没有\(prefixText)库存 \(unitText) 以上的款。" }
 
