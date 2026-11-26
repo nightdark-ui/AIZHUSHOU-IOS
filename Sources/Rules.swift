@@ -116,6 +116,15 @@ enum Rules {
                 up.shown = 0
                 return qtyListPage(up, products: products)
             }
+            // 「1开头和9开头的」→ 在上一批条件里换前缀重列
+            let newPrefixes = prefixFilters(msg)
+            if !newPrefixes.isEmpty, msg.contains("开头") {
+                var byPrefix = t
+                byPrefix.prefixes = newPrefixes
+                byPrefix.shown = 0
+                byPrefix.highValue = 0
+                return qtyListPage(byPrefix, products: products)
+            }
             if isFollowUp(msg) {
                 return qtyListPage(t, products: products)
             }
