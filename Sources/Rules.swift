@@ -13,6 +13,7 @@ struct RuleTurn {
     var highValue: Double = 0     // 列表筛选上限（码，0=不限）
     var lowConfidence = false     // 结果不太确定（筛选/区间/模糊匹配）
     var quick: [String] = []      // 追问按钮：还有吗 / 超过的也要
+    var skus: [String] = []       // 这次列出的款号（用于批量看图）
 }
 
 /// 本地规则引擎：编号直达、区间、筛选、补货，毫秒级
@@ -90,6 +91,7 @@ enum Rules {
             if pool.count > 40 { lines.append("……还有 \(pool.count - 40) 个") }
             var rangeTurn = RuleTurn(kind: "note")
             rangeTurn.lowConfidence = true
+            rangeTurn.skus = pool.map { $0.sku }
             return (lines.joined(separator: "\n"), rangeTurn)
         }
 
@@ -878,6 +880,7 @@ enum Rules {
         if pool.count > 30 { quick.append("还有吗") }
         if isAround { quick.append("超过的也要") }
         turn.quick = quick
+        turn.skus = pool.prefix(80).map { $0.sku }
         turn.prefixes = prefixes
         turn.lowValue = low
         turn.highValue = high
@@ -912,6 +915,7 @@ enum Rules {
         if next.shown < pool.count { quick.append("还有吗") }
         if turn.highValue > 0 { quick.append("超过的也要") }
         next.quick = quick
+        next.skus = Array(Set(turn.skus).union(page.map { $0.sku }))
 
         var lines: [String] = []
         if start == 0 {

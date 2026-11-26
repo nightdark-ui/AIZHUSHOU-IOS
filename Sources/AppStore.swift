@@ -40,6 +40,8 @@ final class AppStore: ObservableObject {
     private var lastSku: String?
     private var lastIntent = ""
     private var lastCodes: [String] = []
+    /// 上一轮列表回答里列出的款号（用于「全部给我图片」）
+    private var lastListSkus: [String] = []
     private var lastAskStamp: (text: String, at: Date)?
     private let settingsKey = "aizhushou.settings.v1"
     private let lastSyncKey = "aizhushou.lastsync"
@@ -695,6 +697,39 @@ final class AppStore: ObservableObject {
 
         chat.append(ChatLine(role: "user", text: question, mode: ""))
 
+        // 「全部给我图片」→ 把上一轮列表里的款都发图
+        let wantsAllImages = (question.contains("图片") || question.contains("照片"))
+            && (question.contains("全部") || question.contains("所有") || question.contains("都要")
+                || question.contains("全都") || question.contains("每个"))
+        if wantsAllImages, !lastListSkus.isEmpty {
+            var line = ChatLine(role: "assistant", text: greet("这是刚才列的 \(lastListSkus.count) 个款："), mode: "rule")
+            var paths: [String] = []
+            var withImage: [String] = []
+            var without: [String] = []
+            for sku in lastListSkus.prefix(24) {
+                let imgs = library.images(for: sku, limit: 1)
+                if let first = imgs.first {
+                    if !paths.contains(first) { paths.append(first) }
+                    withImage.append(sku)
+                } else {
+                    without.append(sku)
+                }
+            }
+            line.images = paths
+            if paths.isEmpty {
+                line.text = greet("刚才列的 \(lastListSkus.count) 个款，图库里都没有图片。")
+            } else {
+                line.text = greet("这是刚才列的 \(lastListSkus.count) 个款，有图的 \(withImage.count) 个：\n"
+                                  + withImage.joined(separator: "、"))
+                if !without.isEmpty {
+                    line.text += "\n（其余 \(without.count) 个图库没有："
+                        + without.prefix(6).joined(separator: "、") + "）"
+                }
+            }
+            chat.append(line)
+            return
+        }
+
         // 只说「图片呢」→ 用上一轮问到的全部编号
         let bareImage = Rules.extractCodes(question).isEmpty
             && (question.contains("图片") || question.contains("照片")
@@ -748,6 +783,9 @@ final class AppStore: ObservableObject {
             lastCodes = usedCodes
         }
         lastTurn = result.turn
+        if let skus = result.turn?.skus, !skus.isEmpty {
+            lastListSkus = skus
+        }
         if let answer = result.text {
             var line = ChatLine(role: "assistant", text: greet(answer), mode: "rule")
             line.lowConfidence = result.turn?.lowConfidence ?? false
