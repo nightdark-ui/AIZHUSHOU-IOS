@@ -8,6 +8,9 @@ struct RuleTurn {
     var shown: Int = 0
     var options: [String] = []
     var intent = ""   // 选项对应的意图：price / stock
+    var prefixes: [String] = []   // 列表筛选用：9开头、1开头
+    var lowValue: Double = 0      // 列表筛选下限（码）
+    var highValue: Double = 0     // 列表筛选上限（码，0=不限）
 }
 
 /// 本地规则引擎：编号直达、区间、筛选、补货，毫秒级
@@ -98,8 +101,11 @@ enum Rules {
         }
 
         // 3. 数量筛选列表（超过 300 米的 / 2 开头的超过 300 米）
+        if let t = turn, t.kind == "qtylist", isFollowUp(msg) {
+            return qtyListPage(t, products: products)
+        }
         if let list = qtyListReply(msg, products: products) {
-            return (list, nil)
+            return list
         }
 
         // 4. 够不够 / 有没有货（单个编号优先）
@@ -529,6 +535,9 @@ enum Rules {
 
     /// 返回 (编号, 数量, 是否只是问有没有货)
     static func thresholdQuestion(_ msg: String) -> (code: String?, need: Double?, isStockYesNo: Bool)? {
+        // 「还有吗」是追问列表，不是问够不够
+        if isFollowUp(msg) { return nil }
+
         let hasAsk = msg.contains("有没有") || msg.contains("够不够") || msg.contains("够")
             || msg.contains("有吗") || msg.contains("有么") || msg.contains("有货")
             || msg.contains("有没有货")
@@ -762,7 +771,7 @@ enum Rules {
 
     // MARK: - 数量筛选
 
-    static func qtyListReply(_ msg: String, products: [Product]) -> String? {
+    static func qtyListReply(_ msg: String, products: [Product]) -> (String?, RuleTurn?)? {
         // 明显的列表问法，即使里面有像编号的片段（1000m、2002）也当筛选处理
         let listIntent = msg.contains("哪些") || msg.contains("那些") || msg.contains("列表")
             || msg.contains("以上") || msg.contains("超过") || msg.contains("大于")
@@ -799,14 +808,21 @@ enum Rules {
         }
 
         guard let raw = threshold else { return nil }
-        guard wantsList || prefix != nil || msg.contains("超过") || msg.contains("以上") else { return nil }
+        guard wantsList || prefix != nil || msg.contains("超过") || msg.contains("以上")
+                || msg.contains("左右") || msg.contains("上下") else { return nil }
 
         // 米 → 码
         let yards = (unit == "米" || unit == "m") ? raw * 1.09361 : raw
 
+        // 「1000m左右」→ 900–1100 米之间
+        let isAround = msg.contains("左右") || msg.contains("上下") || msg.contains("附近")
+        let low = isAround ? yards * 0.9 : yards
+        let high = isAround ? yards * 1.1 : 0
+
         let pool = products.filter { p in
             guard let q = p.qty else { return false }
-            if q < yards { return false }
+            if q < low { return false }
+            if high > 0, q > high { return false }
             if !prefixes.isEmpty {
                 var ok = false
                 for pre in prefixes where p.sku.hasPrefix(pre) { ok = true; break }
@@ -815,17 +831,61 @@ enum Rules {
             return true
         }.sorted { ($0.qty ?? 0) > ($1.qty ?? 0) }
 
-        let unitText = (unit == "米" || unit == "m")
+        var unitText = (unit == "米" || unit == "m")
             ? "\(intText(raw)) 米（约 \(Int(yards)) 码）"
             : "\(intText(raw)) 码"
+        if isAround { unitText += "左右（约 \(Int(low))–\(Int(high)) 码）" }
         let prefixText = prefixes.isEmpty ? "" : prefixes.map { "\($0) 开头" }.joined(separator: "或") + "的"
 
-        guard !pool.isEmpty else { return "没有\(prefixText)库存 \(unitText) 以上的款。" }
+        guard !pool.isEmpty else {
+            return ("没有\(prefixText)库存 \(unitText) 的款。", nil)
+        }
 
-        var lines = ["\(prefixText)库存 \(unitText) 以上的共 \(pool.count) 款，先列 \(min(pool.count, 30)) 个："]
+        var lines = ["\(prefixText)库存 \(unitText) 的共 \(pool.count) 款，先列 \(min(pool.count, 30)) 个："]
         for p in pool.prefix(30) { lines.append("\(p.sku)  \(Int(p.qty ?? 0)) 码") }
-        if pool.count > 30 { lines.append("……还有 \(pool.count - 30) 款（条件收窄一点再看）") }
-        return lines.joined(separator: "\n")
+        if pool.count > 30 {
+            lines.append("……还有 \(pool.count - 30) 款，说「还有吗」看下一批")
+        }
+
+        var turn = RuleTurn(kind: "qtylist")
+        turn.prefixes = prefixes
+        turn.lowValue = low
+        turn.highValue = high
+        turn.shown = min(pool.count, 30)
+        turn.intent = unitText
+        return (lines.joined(separator: "\n"), turn)
+    }
+
+    /// 「还有吗」→ 接着列下一批
+    static func qtyListPage(_ turn: RuleTurn, products: [Product], size: Int = 30) -> (String?, RuleTurn?) {
+        let pool = products.filter { p in
+            guard let q = p.qty else { return false }
+            if q < turn.lowValue { return false }
+            if turn.highValue > 0, q > turn.highValue { return false }
+            if !turn.prefixes.isEmpty {
+                var ok = false
+                for pre in turn.prefixes where p.sku.hasPrefix(pre) { ok = true; break }
+                if !ok { return false }
+            }
+            return true
+        }.sorted { ($0.qty ?? 0) > ($1.qty ?? 0) }
+
+        let start = turn.shown
+        guard start < pool.count else {
+            return ("没有了，这批一共 \(pool.count) 款。", nil)
+        }
+        let page = Array(pool.dropFirst(start).prefix(size))
+        var next = turn
+        next.shown = start + page.count
+
+        var lines = ["接着给 \(page.count) 个（\(start + 1)–\(start + page.count)）："]
+        for p in page { lines.append("\(p.sku)  \(Int(p.qty ?? 0)) 码") }
+        if next.shown >= pool.count {
+            lines.append("—— 全部列完了，共 \(pool.count) 款")
+        } else {
+            lines.append("—— 还有 \(pool.count - next.shown) 款，继续说「还有吗」")
+        }
+        return (lines.joined(separator: "\n"), next)
     }
 
     // MARK: - 比较
