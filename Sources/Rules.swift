@@ -104,8 +104,18 @@ enum Rules {
         }
 
         // 3. 数量筛选列表（超过 300 米的 / 2 开头的超过 300 米）
-        if let t = turn, t.kind == "qtylist", isFollowUp(msg) {
-            return qtyListPage(t, products: products)
+        if let t = turn, t.kind == "qtylist" {
+            // 「超过的也要」「都算上」→ 去掉上限，改成"以上"
+            if msg.contains("超过的") || msg.contains("都要") || msg.contains("也算")
+                || msg.contains("全要") || msg.contains("以上都") {
+                var up = t
+                up.highValue = 0
+                up.shown = 0
+                return qtyListPage(up, products: products)
+            }
+            if isFollowUp(msg) {
+                return qtyListPage(t, products: products)
+            }
         }
         if let list = qtyListReply(msg, products: products) {
             return list
@@ -857,6 +867,9 @@ enum Rules {
         if pool.count > 30 {
             lines.append("……还有 \(pool.count - 30) 款，说「还有吗」看下一批")
         }
+        if isAround {
+            lines.append("—— 这是 \(Int(low))–\(Int(high)) 码的；超过 \(Int(high)) 码的要不要也一起列？说「超过的也要」")
+        }
 
         var turn = RuleTurn(kind: "qtylist")
         turn.lowConfidence = true
@@ -891,7 +904,15 @@ enum Rules {
         next.lowConfidence = true
         next.shown = start + page.count
 
-        var lines = ["接着给 \(page.count) 个（\(start + 1)–\(start + page.count)）："]
+        var lines: [String] = []
+        if start == 0 {
+            let scope = turn.highValue > 0
+                ? "\(Int(turn.lowValue))–\(Int(turn.highValue)) 码"
+                : "\(Int(turn.lowValue)) 码以上"
+            lines.append("\(scope)的共 \(pool.count) 款，先列 \(min(pool.count, size)) 个：")
+        } else {
+            lines.append("接着给 \(page.count) 个（\(start + 1)–\(start + page.count)）：")
+        }
         for p in page { lines.append("\(p.sku)  \(Int(p.qty ?? 0)) 码") }
         if next.shown >= pool.count {
             lines.append("—— 全部列完了，共 \(pool.count) 款")
