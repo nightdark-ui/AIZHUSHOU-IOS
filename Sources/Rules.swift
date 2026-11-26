@@ -116,13 +116,22 @@ enum Rules {
                 up.shown = 0
                 return qtyListPage(up, products: products)
             }
-            // 「1开头和9开头的」→ 在上一批条件里换前缀重列
+            // 「1开头和9开头的」「9开头和10开头 库存超过900」→ 换前缀重列
             let newPrefixes = prefixFilters(msg)
             if !newPrefixes.isEmpty, msg.contains("开头") {
                 var byPrefix = t
                 byPrefix.prefixes = newPrefixes
                 byPrefix.shown = 0
                 byPrefix.highValue = 0
+                // 句子里带新阈值就用新的（超过900 / 800以上）
+                if let parsed = parseQtyThreshold(msg) {
+                    let yards = (parsed.unit == "米" || parsed.unit == "m")
+                        ? parsed.value * 1.09361 : parsed.value
+                    let around = msg.contains("左右") || msg.contains("上下")
+                    byPrefix.lowValue = around ? yards * 0.8 : yards
+                    byPrefix.highValue = around ? yards * 1.2 : 0
+                    byPrefix.intent = around ? "左右" : ""
+                }
                 return qtyListPage(byPrefix, products: products)
             }
             if isFollowUp(msg) {
@@ -786,7 +795,7 @@ enum Rules {
 
     /// 「9开头和1开头」→ ["9","1"]
     static func prefixFilters(_ msg: String) -> [String] {
-        let pattern = "(\\d)\\s*开头"
+        let pattern = "(\\d{1,3})\\s*开头"
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
         let ns = msg as NSString
         var out: [String] = []
@@ -802,42 +811,11 @@ enum Rules {
         msg.contains("补货") || msg.contains("要补") || msg.contains("缺货") || msg.contains("断货")
     }
 
-    // MARK: - 数量筛选
-
-    static func qtyListReply(_ msg: String, products: [Product]) -> (String?, RuleTurn?)? {
-        // 明显的列表问法，即使里面有像编号的片段（1000m、2002）也当筛选处理
-        let listIntent = msg.contains("哪些") || msg.contains("那些") || msg.contains("列表")
-            || msg.contains("以上") || msg.contains("超过") || msg.contains("大于")
-            || msg.contains("少于") || msg.contains("以下")
-
-        // 有具体编号、且不是列表问法 → 交给单款逻辑
-        if !listIntent, let c = extractCodes(msg).first, resolve(c, in: products) != nil { return nil }
-
-        let prefixes = prefixFilters(msg)
-        let prefix = prefixes.first
-        let wantsList = msg.contains("哪些") || msg.contains("那些") || msg.contains("有没")
-            || msg.contains("哪些款") || msg.contains("的款") || msg.contains("的花")
-            || msg.contains("的有") || msg.contains("有的")
-
-        // 阈值：超过/大于/以上/不少于/有/库存/达到 + 数字
-        var threshold: Double? = nil
-        var unit = ""
-
-        let patterns = [
-            "(?:超过|大于|多于|不少于|至少|达到|有|库存|数量)\\s*(\\d{1,6})\\s*(米|m|M|码|打|包)?",
-            "(\\d{1,6})\\s*(米|m|M|码|打|包)?\\s*(?:以上|起|往上|的有|的款)"
-        ]
-        for pat in patterns where threshold == nil {
-            guard let regex = try? NSRegularExpression(pattern: pat) else { continue }
-            let ns = msg as NSString
-            if let m = regex.firstMatch(in: msg, range: NSRange(location: 0, length: ns.length)),
-               m.numberOfRanges > 1,
-               let v = Double(ns.substring(with: m.range(at: 1))), v >= 1 {
-                threshold = v
-                if m.numberOfRanges > 2, m.range(at: 2).location != NSNotFound {
-                    unit = ns.substring(with: m.range(at: 2)).lowercased()
-                }
-            }
+    /// 解析「超过 900」「800 以上」「1000 米左右」这类阈值
+    static func parseQtyThreshold(_ msg: String) -> (value: Double, unit: String)? {
+        if let parsed = parseQtyThreshold(msg) {
+            threshold = parsed.value
+            unit = parsed.unit
         }
 
         guard let raw = threshold else { return nil }
