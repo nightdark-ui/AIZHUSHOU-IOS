@@ -813,6 +813,45 @@ enum Rules {
 
     /// 解析「超过 900」「800 以上」「1000 米左右」这类阈值
     static func parseQtyThreshold(_ msg: String) -> (value: Double, unit: String)? {
+        let patterns = [
+            "(?:超过|大于|多于|不少于|至少|达到|有|库存|数量)\\s*(\\d{1,6})\\s*(米|m|M|码|打|包)?",
+            "(\\d{1,6})\\s*(米|m|M|码|打|包)?\\s*(?:以上|起|往上|左右|上下|的有|的款)"
+        ]
+        for pat in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pat) else { continue }
+            let ns = msg as NSString
+            if let m = regex.firstMatch(in: msg, range: NSRange(location: 0, length: ns.length)),
+               m.numberOfRanges > 1,
+               let v = Double(ns.substring(with: m.range(at: 1))), v >= 1 {
+                var unit = ""
+                if m.numberOfRanges > 2, m.range(at: 2).location != NSNotFound {
+                    unit = ns.substring(with: m.range(at: 2)).lowercased()
+                }
+                return (v, unit)
+            }
+        }
+        return nil
+    }
+
+    // MARK: - 数量筛选
+
+    static func qtyListReply(_ msg: String, products: [Product]) -> (String?, RuleTurn?)? {
+        // 明显的列表问法，即使里面有像编号的片段（1000m、2002）也当筛选处理
+        let listIntent = msg.contains("哪些") || msg.contains("那些") || msg.contains("列表")
+            || msg.contains("以上") || msg.contains("超过") || msg.contains("大于")
+            || msg.contains("少于") || msg.contains("以下")
+
+        // 有具体编号、且不是列表问法 → 交给单款逻辑
+        if !listIntent, let c = extractCodes(msg).first, resolve(c, in: products) != nil { return nil }
+
+        let prefixes = prefixFilters(msg)
+        let prefix = prefixes.first
+        let wantsList = msg.contains("哪些") || msg.contains("那些") || msg.contains("有没")
+            || msg.contains("哪些款") || msg.contains("的款") || msg.contains("的花")
+            || msg.contains("的有") || msg.contains("有的")
+
+        var threshold: Double? = nil
+        var unit = ""
         if let parsed = parseQtyThreshold(msg) {
             threshold = parsed.value
             unit = parsed.unit
