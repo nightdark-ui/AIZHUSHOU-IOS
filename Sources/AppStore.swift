@@ -716,7 +716,9 @@ final class AppStore: ObservableObject {
         // 「全部给我图片」→ 把上一轮列表里的款都发图
         let wantsAllImages = (question.contains("图片") || question.contains("照片"))
             && (question.contains("全部") || question.contains("所有") || question.contains("都要")
-                || question.contains("全都") || question.contains("每个"))
+                || question.contains("全都") || question.contains("每个")
+                || question.contains("都给我") || question.contains("整批")
+                || question.contains("这些") || question.contains("上面"))
         if wantsAllImages, lastListSkus.isEmpty {
             // 上一条回答是 AI 的也支持
             if let last = chat.last(where: { $0.role == "assistant" }) {
@@ -757,6 +759,9 @@ final class AppStore: ObservableObject {
         let bareImage = Rules.extractCodes(question).isEmpty
             && (question.contains("图片") || question.contains("照片")
                 || question.contains("长什么样"))
+        if bareImage, lastCodes.isEmpty, !lastListSkus.isEmpty {
+            lastCodes = lastListSkus
+        }
         if bareImage, !lastCodes.isEmpty {
             var line = ChatLine(role: "assistant", text: greet("这是刚才问的款："), mode: "rule")
             line.images = imagesFor(question: question + " " + lastCodes.joined(separator: " "),
@@ -883,7 +888,10 @@ final class AppStore: ObservableObject {
             chat.append(line)
             // 记下 AI 回答里出现过的款号（供「图片都给我」「列表给我」）
             let found = skusMentioned(in: text)
-            if !found.isEmpty { lastListSkus = found }
+            if !found.isEmpty {
+                lastListSkus = found
+                lastCodes = found
+            }
         } catch {
             let msg: String
             if settings.deepSeekKey.trimmingCharacters(in: .whitespaces).isEmpty {
@@ -1004,6 +1012,11 @@ final class AppStore: ObservableObject {
             var line = ChatLine(role: "assistant", text: answer, mode: "llm")
             line.images = imagesFor(question: question, answer: answer)
             chat.append(line)
+            let found = skusMentioned(in: answer)
+            if !found.isEmpty {
+                lastListSkus = found
+                lastCodes = found
+            }
         }
     }
 

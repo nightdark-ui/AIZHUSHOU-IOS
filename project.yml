@@ -16,8 +16,8 @@ targets:
       properties:
         CFBundleDisplayName: AI小助手
         CFBundleShortVersionString: "1.9.0"
-        CFBundleVersion: "205"
-        BuildTime: "2026-11-26 18:50"
+        CFBundleVersion: "206"
+        BuildTime: "2026-11-26 19:02"
         UILaunchScreen:
           UIColorName: LaunchBackground
         UIUserInterfaceStyle: Light
