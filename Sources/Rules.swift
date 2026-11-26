@@ -12,6 +12,7 @@ struct RuleTurn {
     var lowValue: Double = 0      // 列表筛选下限（码）
     var highValue: Double = 0     // 列表筛选上限（码，0=不限）
     var lowConfidence = false     // 结果不太确定（筛选/区间/模糊匹配）
+    var quick: [String] = []      // 追问按钮：还有吗 / 超过的也要
 }
 
 /// 本地规则引擎：编号直达、区间、筛选、补货，毫秒级
@@ -873,6 +874,10 @@ enum Rules {
 
         var turn = RuleTurn(kind: "qtylist")
         turn.lowConfidence = true
+        var quick: [String] = []
+        if pool.count > 30 { quick.append("还有吗") }
+        if isAround { quick.append("超过的也要") }
+        turn.quick = quick
         turn.prefixes = prefixes
         turn.lowValue = low
         turn.highValue = high
@@ -903,6 +908,10 @@ enum Rules {
         var next = turn
         next.lowConfidence = true
         next.shown = start + page.count
+        var quick: [String] = []
+        if next.shown < pool.count { quick.append("还有吗") }
+        if turn.highValue > 0 { quick.append("超过的也要") }
+        next.quick = quick
 
         var lines: [String] = []
         if start == 0 {

@@ -82,6 +82,7 @@ struct ChatLine: Identifiable, Equatable {
     var lowConfidence = false       // 规则回答是否"不太确定"
     var sourceQuestion = ""         // 原问题（用于"问 AI"复问）
     var aiLoading = false           // 正在问 AI
+    var quickReplies: [String] = []  // 可点的追问按钮
 }
 
 /// App 设置，存在 UserDefaults 里

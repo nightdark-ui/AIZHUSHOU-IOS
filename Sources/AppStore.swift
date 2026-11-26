@@ -447,6 +447,14 @@ final class AppStore: ObservableObject {
         !settings.deepSeekKey.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
+    /// 点追问按钮（还有吗 / 超过的也要）
+    func tapQuick(_ text: String, lineID: UUID) {
+        if let idx = chat.firstIndex(where: { $0.id == lineID }) {
+            chat[idx].quickReplies = []
+        }
+        Task { await ask(text) }
+    }
+
     /// 点候选编号：带上原来问的意图
     /// 点掉某个候选后，把这条消息的选项清空（防止连点/重复反问）
     func consumeOptions(lineID: UUID) {
@@ -743,6 +751,7 @@ final class AppStore: ObservableObject {
         if let answer = result.text {
             var line = ChatLine(role: "assistant", text: greet(answer), mode: "rule")
             line.lowConfidence = result.turn?.lowConfidence ?? false
+            line.quickReplies = result.turn?.quick ?? []
             line.sourceQuestion = question
             line.images = imagesFor(question: effective, answer: answer)
             if let turn = result.turn, turn.kind == "choose" {

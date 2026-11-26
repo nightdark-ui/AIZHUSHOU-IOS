@@ -295,6 +295,26 @@ struct ChatView: View {
                     .padding(.top, 4)
                 }
 
+                if !isUser && !line.quickReplies.isEmpty {
+                    HStack(spacing: 8) {
+                        ForEach(line.quickReplies, id: \.self) { text in
+                            Button {
+                                store.tapQuick(text, lineID: line.id)
+                            } label: {
+                                Text(text)
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundStyle(Theme.brand)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 6)
+                                    .background(Theme.brandSoft)
+                                    .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.top, 4)
+                }
+
                 if !line.images.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
                         ForEach(Array(line.images.enumerated()), id: \.offset) { idx, path in
